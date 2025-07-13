@@ -73,11 +73,6 @@
     <!-- end page -->
 
     <footer class="footer footer-alt" style="color:white">
-        2024 -
-        <script>
-            document.write(new Date().getFullYear())
-        </script> &copy; Gnonel Powered by <a style="color:white;font-weight: bold;"
-            href="https://kofcorporation.com" target="_blank" class="text-white-50">KOFCORPORATION</a>
     </footer>
 
     <!-- Vendor js -->

@@ -47,12 +47,7 @@
                                     </select>
                                 </div>
                             </div>
-                            <div class="col-6 col-sm-6 col-md-3">
-                                <div class="me-3">
-                                    <input type="search" class="form-control my-1 my-lg-0" id="gnonelid" name="gnonelid" autocomplete="off"
-                                        placeholder="Gnonel ID">
-                                </div>
-                            </div>
+                            
                             <div class="col-6 col-sm-6 col-md-2">
                                 <div class="text-lg-start my-1 my-lg-0">
                                     <button id="visualiser" type="button"
@@ -132,70 +127,7 @@
             var paysId = parseInt("{{ $paysId }}");
             var operateurId = parseInt("{{ $operateurId }}");
 
-            // Configuration de l'autocomplétion pour le champ Gnonel ID
-            $("#gnonelid").autocomplete({
-                delay: 300,
-                minLength: 2,
-                source: function(request, response) {
-                    // Afficher indicateur de chargement
-                    $("#gnonelid").addClass("autocomplete-loading");
-                    console.log("Recherche de Gnonel ID pour: " + request.term);
-                    
-                    // Appel AJAX pour récupérer les suggestions
-                    $.ajax({
-                        url: "{{ route('gnonel.search.suggestions') }}",
-                        method: "POST",
-                        dataType: "json",
-                        data: {
-                            term: request.term,
-                            _token: "{{ csrf_token() }}"
-                        },
-                        success: function(data) {
-                            // Retirer l'indicateur de chargement
-                            $("#gnonelid").removeClass("autocomplete-loading");
-                            console.log("Suggestions de Gnonel ID reçues:", data);
-                            
-                            // Si la réponse est un tableau vide
-                            if ($.isArray(data) && data.length === 0) {
-                                response([{ label: 'Aucun Gnonel ID trouvé', value: '', disabled: true }]);
-                            }
-                            // Si c'est un tableau avec des valeurs (succès normal)
-                            else if ($.isArray(data)) {
-                                // Formater les résultats
-                                response($.map(data, function(item) {
-                                    return {
-                                        label: item,
-                                        value: item
-                                    };
-                                }));
-                            }
-                            else {
-                                response([{ label: 'Erreur de format', value: '', disabled: true }]);
-                            }
-                        },
-                        error: function(xhr, status, error) {
-                            // Retirer l'indicateur de chargement
-                            $("#gnonelid").removeClass("autocomplete-loading");
-                            console.error("Erreur lors de la récupération des Gnonel ID:", error);
-                            response([{ label: 'Erreur de connexion', value: '', disabled: true }]);
-                        }
-                    });
-                },
-                select: function(event, ui) {
-                    if (ui.item.disabled) {
-                        event.preventDefault(); // Empêcher la sélection
-                        return false;
-                    }
-                    return true;
-                }
-            }).data("ui-autocomplete")._renderItem = function(ul, item) {
-                // Personnalisation du rendu des éléments de la liste
-                if (item.disabled) {
-                    return $("<li class='ui-state-disabled'>").append(item.label).appendTo(ul);
-                } else {
-                    return $("<li>").append("<div>" + item.label + "</div>").appendTo(ul);
-                }
-            };
+
             
             $("#non").on("click", function() {
                 $('#myModal2').hide();
@@ -205,11 +137,7 @@
             $("#visualiser").on("click", function() {
                 $.ajax({
                     type: 'get',
-                    url: "{{ url('view/all_references') }}/" + $("#titulaire option:selected")
-                        .val(),
-                    data: {
-                        'gnonelid': $('#gnonelid').val()
-                    },
+                    url: "{{ url('view/all_references') }}/" + $("#titulaire option:selected").val(),
                     dataType: 'json',
                     success: function(response) {
                         console.log(response.donnes);

@@ -1,9 +1,9 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use App\User;
 use App\Categorieabonnement;
 use App\Abonnement;
 use App\Http\Controllers\CarouselController;
@@ -182,7 +182,6 @@ Route::get('/modifier/{model}/model', 'ModelController@update')->name('get_updat
 Route::post('/modifier/{model}/model', 'ModelController@add_update')->name('add_update_model')->middleware('auth');
 Route::get('/Supprimer/{model}/model', 'ModelController@delete')->name('delete_model')->middleware('auth');
 
-//route de création d'une autorité contractante
 Route::get('/creer/autorite_contractante', 'AutoriteController@view_created')->name('create_autorite')->middleware('auth');
 Route::post('/creer/autorite_contractante', 'AutoriteController@create')->name('add_autorite')->middleware('auth');
 
@@ -197,6 +196,53 @@ Route::post('/creer/opérateur', 'OperateurController@create')->name('add_operat
 //route pour lister les offres enrégistrées
 Route::get('/liste/offre', 'OffreController@view')->name('liste_offre')->middleware('auth');
 
+/*
+ * Route de debug publique (accessible sans authentification)
+ */
+Route::get('/public-debug-operateur/{id}', function($id) {
+    // Récupérer l'opérateur
+    $operateur = DB::table('operateurs')->where('id', $id)->first();
+    if (!$operateur) {
+        return response()->json(['error' => 'Opérateur non trouvé'], 404);
+    }
+    
+    // Récupérer TOUS les utilisateurs associés à cet opérateur
+    $users = DB::table('users')->where('ratache_operateur', $id)->get();
+    
+    $utilisateurs_details = [];
+    $est_abonne = false;
+    
+    // Parcourir tous les utilisateurs pour vérifier leurs abonnements
+    foreach($users as $user) {
+        $abonnement = DB::table('souscriptions')
+            ->where('iduser', $user->id)
+            ->orderBy('idsouscription', 'desc')
+            ->first();
+            
+        $user_est_abonne = false;
+        if ($abonnement && $abonnement->date_fin && $abonnement->date_fin >= date('Y-m-d')) {
+            $user_est_abonne = true;
+            $est_abonne = true; // Si au moins un utilisateur est abonné, l'opérateur est considéré comme abonné
+        }
+        
+        $utilisateurs_details[] = [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'date_fin' => $abonnement ? $abonnement->date_fin : null,
+            'est_abonne' => $user_est_abonne,
+            'abonnement' => $abonnement
+        ];
+    }
+    
+    return response()->json([
+        'operateur' => $operateur,
+        'nombre_utilisateurs' => count($users),
+        'utilisateurs' => $utilisateurs_details,
+        'est_abonne' => $est_abonne,  // TRUE si au moins un utilisateur a un abonnement valide
+        'aujourd_hui' => date('Y-m-d')
+    ]);
+});
 
 Route::post('/Rechercher/opérateur', 'OperateurController@Rechercher')->name('rechercher_operateur')->middleware('auth');
 Route::get('/Rechercher/opérateur', function () {
@@ -508,6 +554,52 @@ Route::group(['middleware' => ['auth', 'role:user']], function () {
     Route::post('postmodifpass', 'FrontController@modifpass')->name('postmodifpass');
     Route::get('change-password', 'FrontController@infocompte')->name('change-password');
     Route::get('view/detailsreference/{reference}', 'FrontController@detailsreference')->name('detailsreference');
+    
+    // Route temporaire pour diagnostic d'abonnement d'un opérateur (accessible sans authentification)
+    Route::get('/debug-operateur/{id}', function($id) {
+        // Récupérer l'opérateur
+        $operateur = DB::table('operateurs')->where('id', $id)->first();
+        if (!$operateur) {
+            return response()->json(['error' => 'Opérateur non trouvé'], 404);
+        }
+        
+        // MISE À JOUR: Récupérer TOUS les utilisateurs associés à cet opérateur
+        $users = DB::table('users')->where('ratache_operateur', $id)->get();
+        
+        $utilisateurs_details = [];
+        $est_abonne = false;
+        
+        // Parcourir tous les utilisateurs pour vérifier leurs abonnements
+        foreach($users as $user) {
+            $abonnement = DB::table('souscriptions')
+                ->where('iduser', $user->id)
+                ->orderBy('idsouscription', 'desc')
+                ->first();
+                
+            $user_est_abonne = false;
+            if ($abonnement && $abonnement->date_fin && $abonnement->date_fin >= date('Y-m-d')) {
+                $user_est_abonne = true;
+                $est_abonne = true; // Si au moins un utilisateur est abonné, l'opérateur est considéré comme abonné
+            }
+            
+            $utilisateurs_details[] = [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'date_fin' => $abonnement ? $abonnement->date_fin : null,
+                'est_abonne' => $user_est_abonne,
+                'abonnement' => $abonnement
+            ];
+        }
+        
+        return response()->json([
+            'operateur' => $operateur,
+            'nombre_utilisateurs' => count($users),
+            'utilisateurs' => $utilisateurs_details,
+            'est_abonne' => $est_abonne,  // TRUE si au moins un utilisateur a un abonnement valide
+            'aujourd_hui' => date('Y-m-d')
+        ]);
+    });
     Route::get('info/compteaut', 'FrontController@infocompteaut')->name('infocompteaut');
     Route::get('view/all_references/{id}', 'FrontController@viewallref')->name('viewallref');
     Route::get('view/selectoperateur', 'FrontController@selectoperateur')->name('selectoperateur');

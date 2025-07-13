@@ -17,17 +17,16 @@ class BasefourController extends Controller
   public function index()
   {
     $verif = User::verifabonnement(Auth::user());
-    $pays = DB::table('pays')->get();
     $pays = null;
     $idpays = "";
     $bases = Basefour::where('user_id', '=', Auth::user()->id)->get();
+    
     if (Auth::user()->ratache_operateur != null) {
       $idpays = DB::table('operateurs')->where('id', Auth::user()->ratache_operateur)->first()->id_pays;
     }
     if (Auth::user()->ratache_autorite != null) {
       $idpays = DB::table('autoritecontractantes')->where('id', Auth::user()->ratache_autorite)->first()->id_pays;
     }
-
 
     if ($verif->date_fin == null) {
       return redirect(route('home'));
@@ -36,17 +35,18 @@ class BasefourController extends Controller
       return redirect(route('pricing'));
     }
 
-
-
     if ($verif->oper_local == 1 && $verif->oper_international == 1) {
       $pays = DB::table('pays')->orderby('nom_pays')->get();
     } else {
       $pays = DB::table('pays')->where('id', $idpays)->get();
       //n'afficher que le pays que la personne qui s'est connecter
     }
+    
+    // Récupération des catégories pour le filtre
+    $categories = DB::table('categories')->orderby('nom_categorie', 'asc')->get();
 
     $bases = Basefour::where('user_id', '=', Auth::user()->id)->get();
-    return view('bases/index', compact('bases', 'pays'));
+    return view('bases/index', compact('bases', 'pays', 'categories'));
   }
   public function create()
   {
@@ -168,15 +168,51 @@ class BasefourController extends Controller
 
   public function searchreference(Request $request)
   {
-    $references = DB::table('references')
+    // Log pour le debug
+    \Log::info('Recherche de références', [
+      'pays_id' => $request->pays,
+      'categorie_id' => $request->categorie,
+      'terme_recherche' => $request->reference
+    ]);
+    
+    // Construction de la requête SQL pour trouver les références
+    $query = DB::table('references')
       ->join('operateurs', 'operateurs.id', '=', 'references.operateur')
       ->join('pays', 'pays.id', '=', 'operateurs.id_pays')
-      ->join('users', 'users.id', '=', 'operateurs.id_user')
-      //->join('souscriptions', 'souscriptions.iduser', '=', 'users.id')
-      ->where('pays.id', $request->pays)
-      ->where('references.libelle_marche', 'like', '% ' . $request->reference . ' %')
-      ->select('references.*', 'operateurs.raison_social as operateur', 'operateurs.gnonelid as gnonelid', 'pays.id as pays_id', 'operateurs.id as operateur_id')->orderby('references.created_at', 'desc')
-      ->get();
+      // Jointure avec categories pour le filtrage par catégorie
+      ->join('categories', 'categories.id', '=', 'references.type_marche')
+      // Filtrer par pays (obligatoire)
+      ->where('pays.id', $request->pays);
+    
+    // Filtrer par catégorie si spécifiée
+    if ($request->categorie && $request->categorie != '') {
+      $query->where('references.type_marche', $request->categorie);
+    }
+    
+    // Filtrer par terme de recherche si spécifié
+    if ($request->reference && $request->reference != '') {
+      $searchTerm = $request->reference;
+      $query->where(function($q) use ($searchTerm) {
+        $q->where('references.libelle_marche', 'like', '%' . $searchTerm . '%')
+          ->orWhere('references.reference_marche', 'like', '%' . $searchTerm . '%');
+      });
+    }
+    
+    // Sélectionner les colonnes et exécuter la requête
+    $references = $query->select(
+        'references.*', 
+        'operateurs.raison_social as operateur', 
+        'operateurs.gnonelid as gnonelid', 
+        'pays.id as pays_id', 
+        'operateurs.id as operateur_id',
+        'categories.nom_categorie as categorie'
+    )
+    ->orderby('references.created_at', 'desc')
+    ->get();
+      
+    // Log des résultats pour le debug
+    \Log::info('Résultats de recherche', ['nombre_resultats' => count($references)]);
+      
     return response()->json($references);
   }
   

@@ -366,46 +366,100 @@ class FrontController extends Controller
 
   public function detailsreference($id)
   {
+    // Vérification de l'abonnement de l'utilisateur courant
     $verif = User::verifabonnement(Auth::user());
-    //dd($verif);
+  
+    // Obtenir l'ID de l'opérateur associé à cette référence
     $oper_id = DB::table('references')
       ->join('operateurs', 'operateurs.id', '=', 'references.operateur')
       ->where('references.idreference', $id)
       ->select('operateurs.id')
       ->first()->id;
-    //dd($oper_id);
-    $user_ref = User::where('ratache_operateur', $oper_id)->first();
-    // ->join('users', 'users.ratache_operateur', '=', 'operateurs.id')
-
+  
+    // Informations de l'opérateur pour le debug
+    $operateur_info = DB::table('operateurs')->where('id', $oper_id)->first();
+    $debug_info = [
+      'operateur_id' => $oper_id, 
+      'raison_social' => $operateur_info->raison_social ?? 'N/A',
+      'timestamp' => date('Y-m-d H:i:s')
+    ];
+  
+    // Vérification de l'abonnement de l'utilisateur courant
     if ($verif->date_fin == null) {
+      \Log::info('Utilisateur courant sans abonnement', $debug_info);
       return redirect(route('home'));
-      dd(1);
     } elseif ($verif->date_fin < date('Y-m-d')) {
-      dd(2);
+      \Log::info('Abonnement de l\'utilisateur courant expiré', array_merge($debug_info, [
+        'date_fin_user' => $verif->date_fin,
+        'aujourd\'hui' => date('Y-m-d')
+      ]));
       session()->flash('message', sprintf('Veuillez vous réabonner votre abonnement etait expiré le ' . Carbon::parse($verif->date_fin)->format('d/m/Y')));
       return redirect(route('pricing'));
     }
-    //dd($user_ref);
-    if ($user_ref == null) {
-      //dd(1);
+  
+    // NOUVELLE LOGIQUE: Récupérer TOUS les utilisateurs associés à cet opérateur
+    $users_ref = User::where('ratache_operateur', $oper_id)->get();
+  
+    \Log::info('Vérification des utilisateurs associés à l\'opérateur', array_merge($debug_info, [
+      'nombre_utilisateurs_associes' => count($users_ref)
+    ]));
+  
+    // Si aucun utilisateur n'est associé à cet opérateur
+    if ($users_ref->isEmpty()) {
+      \Log::info('Aucun utilisateur associé à cet opérateur', $debug_info);
       return back()->with('add_ok', '');
     }
-    if ($user_ref->date_fin == null) {
-      //dd(2);
-      return back()->with('add_ok', '');
-    } elseif ($user_ref->date_fin < date('Y-m-d')) {
-      //dd(3);
-      /*session()->flash('message', sprintf('Veuillez vous reabonner votre abonnement etait expiré le '.Carbon::parse($verif->date_fin)->format('d/m/Y')));
-       return redirect(route('pricing'));*/
+  
+    // Vérifier si au moins un utilisateur a un abonnement valide
+    $abonnement_valide = false;
+    $utilisateurs_verifies = [];
+  
+    foreach ($users_ref as $user) {
+      $user_info = [
+        'user_id' => $user->id,
+        'name' => $user->name,
+        'date_fin' => $user->date_fin ?? 'NULL'
+      ];
+      
+      // Un abonnement est valide si date_fin existe et est dans le futur
+      if ($user->date_fin !== null && $user->date_fin >= date('Y-m-d')) {
+        $abonnement_valide = true;
+        $user_info['abonnement_valide'] = true;
+      } else {
+        $user_info['abonnement_valide'] = false;
+        if ($user->date_fin === null) {
+          $user_info['raison'] = 'Pas de date de fin';
+        } else {
+          $user_info['raison'] = 'Abonnement expiré';
+        }
+      }
+      
+      $utilisateurs_verifies[] = $user_info;
+    }
+  
+    \Log::info('Résultat de la vérification des abonnements', array_merge($debug_info, [
+      'abonnement_valide_trouve' => $abonnement_valide,
+      'utilisateurs' => $utilisateurs_verifies
+    ]));
+  
+    // Si aucun abonnement valide n'est trouvé, demander une recommandation
+    if (!$abonnement_valide) {
+      \Log::info('Aucun abonnement valide trouvé pour cet opérateur', $debug_info);
       return back()->with('add_ok', '');
     }
-
+  
+    // Si un abonnement valide est trouvé, permettre l'accès aux détails
     $reference = DB::table('references')
       ->where('references.idreference', '=', $id)
       ->first();
 
+    \Log::info('Accès autorisé aux détails de la référence', array_merge($debug_info, [
+      'reference_id' => $id
+    ]));
+  
     return view('detailsreference', compact('reference'));
   }
+
   public function selectoperateur(Request $request)
   {
     $verif = User::verifabonnement(Auth::user());

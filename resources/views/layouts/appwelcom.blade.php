@@ -246,7 +246,7 @@
             <hr style="color: #1b87fa">
             <div class="row">
                 <div class="col">
-                    <span style="color: #3fa46a;">{{ date('Y') }} Copyright Gnonel,Tous droits reservé</span>
+                    <span style="color: #3fa46a;"></span>
                 </div>
                 <div class="col">
                     <span style="color: #3fa46a;">Conditions d'utilisations</span>

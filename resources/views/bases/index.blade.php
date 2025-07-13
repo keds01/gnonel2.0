@@ -30,7 +30,7 @@
                     <div class="card-body">
                         <form onsubmit="return searchReference(event);">
                             <div class="row">
-                                <div class="col-12 col-sm-6 col-md-5">
+                                <div class="col-12 col-sm-6 col-md-4">
                                     <div class="me-sm-3">
                                         <select class="form-select my-1 my-lg-0" name="pays" required id="pays">
                                             <option value="" disabled="true" selected="true">--- Selectionner pays
@@ -42,9 +42,19 @@
                                         </select>
                                     </div>
                                 </div>
-                                <div class="col-6 col-sm-6 col-md-5">
+                                <div class="col-12 col-sm-6 col-md-3">
+                                    <div class="me-sm-3">
+                                        <select class="form-select my-1 my-lg-0" name="categorie" id="categorie">
+                                            <option value="">--- Toutes catégories ---</option>
+                                            @foreach ($categories as $categorie)
+                                                <option value="{{ $categorie->id }}">{{ $categorie->nom_categorie }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-12 col-sm-6 col-md-3">
                                     <div class="me-3">
-                                        <input type="search" required class="form-control my-1 my-lg-0" id="reference"
+                                        <input type="search" class="form-control my-1 my-lg-0" id="reference"
                                             name="reference" placeholder="Rechercher une référence technique">
                                     </div>
                                 </div>
@@ -73,12 +83,14 @@
                         <table id="datatable-buttons" class="table table-striped dt-responsive nowrap w-100">
                             <thead class="bg-primary text-white">
                                 <tr>
-                                    <td style="width:50%">Reference technique</td>
-                                    <td style="width:30%">Opérateur économique</td>
+                                    <td style="width:40%">Reference technique</td>
+                                    <td style="width:25%">Opérateur économique</td>
+                                    <td style="width:25%">Catégorie</td>
                                     {{-- <td>Gnonel ID</td> --}}
                                 </tr>
                             </thead>
                             <tbody>
+                                <td></td>
                                 <td></td>
                                 <td></td>
                                 {{-- <td></td> --}}
@@ -104,6 +116,7 @@
                     data: {
                         '_token': '{{ csrf_token() }}',
                         'pays': $('#pays').val(),
+                        'categorie': $('#categorie').val(),
                         'reference': $('#reference').val()
                     },
                     dataType: 'json',
