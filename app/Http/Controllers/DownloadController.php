@@ -12,6 +12,79 @@ use Illuminate\Support\Facades\File;
 class DownloadController extends Controller
 {
     /**
+     * Gérer la visualisation des spécifications techniques (sans téléchargement)
+     * Ouvre directement le document dans le navigateur
+     */
+    public function viewSpec($filename)
+    {
+        // Vérifier si l'utilisateur est connecté
+        if (!Auth::check()) {
+            if (request()->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'auth_required' => true,
+                    'message' => 'Veuillez vous connecter pour visualiser des spécifications.'
+                ], 401);
+            }
+            return redirect()->route('login');
+        }
+
+        $user = Auth::user();
+        $verif = User::verifabonnement($user);
+        $isAjax = request()->ajax() || request()->header('X-Requested-With') === 'XMLHttpRequest';
+        
+        // Sécuriser le nom de fichier
+        $filename = basename($filename);
+        
+        // Chemin physique du fichier
+        $path = public_path('images/uploads/' . $filename);
+        
+        // Vérification d'existence du fichier
+        if (!File::exists($path)) {
+            if ($isAjax) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Fichier non trouvé'
+                ], 404);
+            }
+            abort(404, 'Fichier non trouvé');
+        }
+        
+        // Pour les non-abonnés, limiter à 3 visualisations
+        if ($verif == null || $verif->date_fin < date('Y-m-d')) {
+            $viewCount = Session::get('view_count', 0);
+            
+            if ($viewCount >= 3) {
+                if ($isAjax) {
+                    return response()->json([
+                        'success' => false,
+                        'limit_reached' => true,
+                        'message' => 'Limite de visualisations atteinte. Veuillez vous abonner pour visualiser plus de spécifications techniques.'
+                    ]);
+                }
+                
+                Session::flash('message', 'Limite de visualisations atteinte. Veuillez vous abonner pour visualiser plus de spécifications techniques.');
+                return redirect()->route('pricing');
+            }
+            
+            // Incrémenter le compteur de visualisations
+            Session::put('view_count', $viewCount + 1);
+        }
+        
+        // Obtenir le type MIME du fichier
+        $mime = mime_content_type($path) ?: 'application/octet-stream';
+        
+        // Configurer les en-têtes pour la visualisation (inline au lieu de attachment)
+        $headers = [
+            'Content-Type' => $mime,
+            'Content-Disposition' => 'inline; filename="' . $filename . '"',
+        ];
+        
+        // Renvoyer le fichier avec les en-têtes corrects pour la visualisation
+        return response()->file($path, $headers);
+    }
+    
+    /**
      * Gérer le téléchargement des spécifications techniques
      * avec limitation pour les utilisateurs non abonnés
      */
@@ -99,7 +172,7 @@ class DownloadController extends Controller
             $path = public_path('images/uploads/' . $filename);
             
             // Débogage : journaliser les informations du fichier
-            \Log::info('Tentative de téléchargement: ' . $path);
+            \Log::info('Tentative de visualisation: ' . $path);
             \Log::info('Existence du fichier: ' . (file_exists($path) ? 'Oui' : 'Non'));
             
             // Vérification d'existence du fichier
@@ -107,16 +180,25 @@ class DownloadController extends Controller
                 return response()->json(['error' => 'Fichier introuvable: ' . $path], 404);
             }
             
-            // Méthode simple et directe - envoyer le fichier en tant que réponse
-            return response()->file($path);
+            // Obtenir le type MIME du fichier
+            $mime = mime_content_type($path) ?: 'application/octet-stream';
+            
+            // Configurer les en-têtes pour la visualisation (inline au lieu de attachment)
+            $headers = [
+                'Content-Type' => $mime,
+                'Content-Disposition' => 'inline; filename="' . $filename . '"',
+            ];
+            
+            // Méthode simple et directe - envoyer le fichier en tant que réponse pour visualisation
+            return response()->file($path, $headers);
             
         } catch (\Exception $e) {
             // Journaliser l'exception
-            \Log::error('Erreur lors du téléchargement: ' . $e->getMessage());
+            \Log::error('Erreur lors de la visualisation: ' . $e->getMessage());
             
             // Retourner une réponse d'erreur explicative
             return response()->json([
-                'error' => 'Erreur lors du téléchargement',
+                'error' => 'Erreur lors de la visualisation',
                 'message' => $e->getMessage(),
                 'file' => $e->getFile(),
                 'line' => $e->getLine()
@@ -151,13 +233,13 @@ class DownloadController extends Controller
         // 5. Obtenir le type MIME du fichier
         $mime = mime_content_type($path) ?: 'application/octet-stream';
         
-        // 6. Configurer les en-têtes pour le téléchargement
+        // 6. Configurer les en-têtes pour la visualisation (inline au lieu de attachment)
         $headers = [
             'Content-Type' => $mime,
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Content-Disposition' => 'inline; filename="' . $filename . '"',
         ];
         
-        // 7. Renvoyer le fichier avec les en-têtes corrects
+        // 7. Renvoyer le fichier avec les en-têtes corrects pour la visualisation
         return response()->file($path, $headers);
     }
 }

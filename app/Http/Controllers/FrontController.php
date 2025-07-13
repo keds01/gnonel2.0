@@ -330,20 +330,27 @@ class FrontController extends Controller
 
   public function infocompte()
   {
+    // Récupérer les informations d'abonnement, mais ne pas bloquer l'accès
     $verif = User::verifabonnement(Auth::user());
-
-    if ($verif->date_fin == null) {
-      return redirect(route('home'));
+    $abonnementActif = true;
+    $messageAbonnement = null;
+  
+    // Vérifier le statut d'abonnement pour l'affichage, mais pas pour bloquer l'accès
+    if ($verif == null || $verif->date_fin == null) {
+      $abonnementActif = false;
+      $messageAbonnement = "Vous n'avez pas d'abonnement actif";
     } elseif ($verif->date_fin < date('Y-m-d')) {
-      session()->flash('message', sprintf('Veuillez vous reabonner votre abonnement etait expiré le ' . Carbon::parse($verif->date_fin)->format('d/m/Y')));
-      return redirect(route('pricing'));
+      $abonnementActif = false;
+      $messageAbonnement = 'Votre abonnement a expiré le ' . Carbon::parse($verif->date_fin)->format('d/m/Y');
     }
+  
     $operateur = DB::table('operateurs')
       ->join('pays', 'pays.id', '=', 'operateurs.id_pays')
       ->leftjoin('secteuractivite', 'secteuractivite.idsecteuractivite', '=', 'operateurs.secteuractivite_id')
       ->select('operateurs.*', 'pays.nom_pays')
       ->where('operateurs.id', '=', Auth::user()->ratache_operateur)->first();
-    return view('abonnes/infocompte', compact('operateur'));
+  
+    return view('abonnes/infocompte', compact('operateur', 'abonnementActif', 'messageAbonnement'));
   }
 
   public function infocompteaut()

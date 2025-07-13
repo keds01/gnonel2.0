@@ -81,7 +81,7 @@
                                 <button type="button" 
                                     onclick="downloadSpec('{{ $spe->lien }}', '{{ $spe->libelle }}')"
                                     class="btn btn-success btn-xs waves-effect waves-light download-btn">
-                                    <i class="mdi mdi-download"></i> Télécharger
+                                    <i class="mdi mdi-eye"></i> Visualiser
                                 </button>
                             </div>
 
@@ -161,76 +161,31 @@
     </div>
 
     <script>
-        // Fonction pour télécharger une spécification avec limitation
+        // Fonction pour visualiser une spécification dans le navigateur
         function downloadSpec(filename, title) {
-            // URL pour la vérification des permissions
-            var checkUrl = "{{ route('download.spec', '') }}/" + encodeURIComponent(filename);
-            
             // Afficher un indicateur de chargement sur tous les boutons
             var downloadBtns = $('.download-btn');
             downloadBtns.attr('disabled', true);
             downloadBtns.html('<i class="fas fa-spinner fa-spin"></i> Chargement...');
             
-            console.log("Téléchargement initié pour:", filename);
+            console.log("Visualisation initiée pour:", filename);
             
-            // Vérifier les permissions de téléchargement
-            $.ajax({
-                type: 'GET',
-                url: checkUrl,
-                dataType: 'json',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                success: function(response) {
-                    console.log("Réponse du serveur:", response);
-                    
-                    // Rétablir tous les boutons
-                    downloadBtns.attr('disabled', false);
-                    downloadBtns.html('<i class="mdi mdi-download"></i> Télécharger');
-                    
-                    if (response.limit_reached) {
-                        // Limite de téléchargement atteinte
-                        $('#downloadLimitModal').modal('show');
-                    } 
-                    else if (response.success && response.download_url) {
-                        // Méthode 1 : Téléchargement direct par fenêtre
-                        window.location.href = response.download_url;
-                        
-                        // Méthode 2 : Iframe de secours (si la redirection directe échoue)
-                        setTimeout(function() {
-                            console.log("Téléchargement de secours via iframe");
-                            var iframe = document.createElement('iframe');
-                            iframe.style.display = 'none';
-                            iframe.src = response.download_url;
-                            document.body.appendChild(iframe);
-                            
-                            // Nettoyer l'iframe après le téléchargement
-                            setTimeout(function() {
-                                if (document.body.contains(iframe)) {
-                                    document.body.removeChild(iframe);
-                                }
-                            }, 5000);
-                        }, 1000);
-                    }
-                },
-                error: function(xhr, status, error) {
-                    console.error("Erreur AJAX:", status, error);
-                    console.log("Détails de l'erreur:", xhr.responseText);
-                    
-                    // Rétablir tous les boutons
-                    downloadBtns.attr('disabled', false);
-                    downloadBtns.html('<i class="mdi mdi-download"></i> Télécharger');
-                    
-                    if (xhr.status === 401) {
-                        // L'utilisateur n'est pas connecté
-                        alert('Vous devez être connecté pour télécharger des spécifications.');
-                        window.location.href = "{{ route('login') }}";
-                    } else {
-                        // Autre erreur
-                        alert('Une erreur est survenue lors du téléchargement. Veuillez réessayer. (' + (xhr.responseText || error) + ')');
-                    }
+            // URL pour la visualisation directe (accès à la nouvelle route view.spec)
+            var viewUrl = "{{ route('view.spec', '') }}/" + encodeURIComponent(filename);
+            
+            // Ouvrir directement dans un nouvel onglet pour visualisation
+            var newTab = window.open(viewUrl, '_blank');
+            
+            // Rétablir tous les boutons après une courte pause
+            setTimeout(function() {
+                downloadBtns.attr('disabled', false);
+                downloadBtns.html('<i class="mdi mdi-eye"></i> Visualiser');
+                
+                // Vérifier si l'onglet a été bloqué par un bloqueur de popup
+                if (!newTab || newTab.closed || typeof newTab.closed == 'undefined') {
+                    alert("Le navigateur a bloqué l'ouverture de l'onglet. Veuillez autoriser les popups pour ce site.");
                 }
-            });
+            }, 500);
         }
         
         $(document).ready(function() {
@@ -392,7 +347,7 @@
                                 <button type="button" 
                                     onclick="downloadSpec('${lien}', '${libelle}')"
                                     class="btn btn-success btn-xs waves-effect waves-light download-btn">
-                                    <i class="mdi mdi-download"></i> Télécharger
+                                    <i class="mdi mdi-eye"></i> Visualiser
                                 </button>
                             </div>
 

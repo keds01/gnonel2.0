@@ -526,6 +526,7 @@ Route::group(['middleware' => ['auth', 'role:user']], function () {
     Route::resource('basefournisseurs', 'BasefourController');
     Route::get('download-spec/{filename}', 'DownloadController@downloadSpec')->name('download.spec');
     Route::get('download-spec-direct/{filename}', 'DownloadController@directDownload')->name('download.spec.direct');
+    Route::get('view-spec/{filename}', 'DownloadController@viewSpec')->name('view.spec');
     // Routes pour l'autocomplétion des différentes barres de recherche
     Route::post('spec/search/suggestions', 'SpecController@getSearchSuggestions')->name('spec.search.suggestions');
     Route::post('spec/public/suggestions', 'FrontController@getPublicSpecSuggestions')->name('spec.public.suggestions');

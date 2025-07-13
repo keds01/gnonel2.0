@@ -47,7 +47,7 @@
                                 </tr>
                                 <tr>
                                     <td style="width: 20%">Structure</td>
-                                    <td>{{ $operateur->raison_social }}</td>
+                                    <td>{{ $operateur ? $operateur->raison_social : 'Non définie' }}</td>
                                 </tr>
                                 {{-- <tr>
                                     <td style="width: 20%">Gnonel Id</td>
@@ -55,7 +55,7 @@
                                 </tr> --}}
                                 <tr>
                                     <td style="width: 20%">Pays</td>
-                                    <td>{{ $operateur->nom_pays }}</td>
+                                    <td>{{ $operateur ? $operateur->nom_pays : 'Non défini' }}</td>
                                 </tr>
                                 <tr>
                                     <td style="width: 20%">Adresse mail</td>
@@ -68,11 +68,30 @@
                                     </td>
                                 </tr>
                                 <tr>
-                                    <td style="width: 20%">Abonnement souscrit</td>
-                                    <td>{{ \App\User::verifabonnement(Auth::user())->libelle }}</td>
+                                    <td style="width: 20%">Statut d'abonnement</td>
+                                    <td>
+                                        @if($abonnementActif)
+                                            <span class="badge bg-success">Actif</span>
+                                            @if(isset($verif) && $verif && isset($verif->libelle))
+                                                - {{ $verif->libelle }}
+                                            @endif
+                                        @else
+                                            <span class="badge bg-warning">Inactif</span>
+                                            @if($messageAbonnement)
+                                                - {{ $messageAbonnement }}
+                                            @endif
+                                        @endif
+                                    </td>
                                 </tr>
                             </tbody>
                         </table>
+
+                        @if(!$abonnementActif)
+                            <div class="alert alert-warning mt-3">
+                                <i class="fe-alert-triangle"></i> <strong>Attention :</strong> {{ $messageAbonnement ?? 'Votre abonnement n\'est pas actif.' }} 
+                                <a href="{{ route('pricing') }}" class="alert-link">Cliquez ici pour renouveler votre abonnement</a>.
+                            </div>
+                        @endif
 
                         <div class="mt-4 text-center">
                             <a href="{{ route('modifpass') }}" class="btn btn-primary">
