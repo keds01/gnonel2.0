@@ -68,33 +68,30 @@
                                             </tr>
                                             <tr>
                                                 <td class="p-1">
-                                                    @if ($souscriptions->frais_bonus != null)
-                                                        Prix Total
-                                                        @if ($souscriptions->discount_recom != null && $souscriptions->discount_recom > 0)
-                                                            Réduction recommandation
-                                                        @endif
-                                                        @if ($souscriptions->discount_pack != null && $souscriptions->discount_pack > 0)
-                                                            Réduction pack
-                                                        @endif
-                                                        Prix à payer
-                                                    @else
-                                                        Prix Total
-                                                    @endif
-                                                </td>
-                                                <td class="p-1">
-                                                    @if ($souscriptions->frais_bonus != null)
-                                                        <b><?= $souscriptions->frais_bonus + $souscriptions->montant_finale_apaye ?>
-                                                            FCFA</b>
-                                                        @if ($souscriptions->discount_recom != null && $souscriptions->discount_recom > 0)
-                                                            <b><?= $souscriptions->discount_recom ?> FCFA</b>
-                                                        @endif
-                                                        @if ($souscriptions->discount_pack != null && $souscriptions->discount_pack > 0)
-                                                            <b><?= $souscriptions->discount_pack ?> FCFA</b>
-                                                        @endif
-                                                    @endif
-
-                                                    <b><?= $souscriptions->montant_finale_apaye ?> FCFA</b>
-                                                </td>
+                                       @php
+    // Prix initial = montant_finale_apaye + discount_pack + discount_recom
+    $prixInitial = $souscriptions->montant_finale_apaye + ($souscriptions->discount_pack ?? 0) + ($souscriptions->discount_recom ?? 0);
+@endphp
+<tr>
+    <td class="p-1">Prix total</td>
+    <td class="p-1"><b>{{ number_format($prixInitial, 0, '.', ' ') }} FCFA</b></td>
+</tr>
+@if ($souscriptions->discount_recom != null && $souscriptions->discount_recom > 0)
+<tr>
+    <td class="p-1">Réduction/recommandation</td>
+    <td class="p-1" style="color:#0c43cc">- {{ number_format($souscriptions->discount_recom, 0, '.', ' ') }} FCFA</td>
+</tr>
+@endif
+@if ($souscriptions->discount_pack != null && $souscriptions->discount_pack > 0)
+<tr>
+    <td class="p-1">Réduction/pack</td>
+    <td class="p-1" style="color:#0c43cc">- {{ number_format($souscriptions->discount_pack, 0, '.', ' ') }} FCFA</td>
+</tr>
+@endif
+<tr>
+    <td class="p-1"><b>Prix à payer</b></td>
+    <td class="p-1"><b style="font-size:1.1em">{{ number_format($souscriptions->montant_finale_apaye, 0, '.', ' ') }} FCFA</b></td>
+</tr>
                                             </tr>
                                             <tr>
                                                 <td class="p-1">Date</td>

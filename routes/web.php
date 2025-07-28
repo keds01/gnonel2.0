@@ -518,6 +518,7 @@ Route::group(['middleware' => ['auth', 'role:admin']], function () {
 // Création d'opérateur ou d'autorité contractante
 Route::post('view/enreg_operateur', 'FrontController@enregoperateur')->name('enreg_operateur');
 Route::post('view/enreg_autorite', 'FrontController@enregautorite')->name('enreg_autorite');
+Route::post('view/enreg_reference', 'FrontController@enregreference')->name('enreg_reference');
 
 
 Route::group(['middleware' => ['auth', 'role:user']], function () {
@@ -531,7 +532,7 @@ Route::group(['middleware' => ['auth', 'role:user']], function () {
     Route::post('spec/search/suggestions', 'SpecController@getSearchSuggestions')->name('spec.search.suggestions');
     Route::post('spec/public/suggestions', 'FrontController@getPublicSpecSuggestions')->name('spec.public.suggestions');
     Route::post('gnonel/search/suggestions', 'FrontController@getGnonelIdSuggestions')->name('gnonel.search.suggestions');
-    Route::post('bases/reference/suggestions', 'BaseController@getReferenceSuggestions')->name('bases.reference.suggestions');
+    Route::post('bases/reference/suggestions', 'BasefourController@getReferenceSuggestions')->name('bases.reference.suggestions');
     Route::post('bases/rccm/suggestions', 'BasefourController@getRccmSuggestions')->name('bases.rccm.suggestions');
     Route::post('references/recherche', 'BasefourController@searchreference');
     Route::get('delete/basefournisseurs/{id}', 'BasefourController@delete');
@@ -548,7 +549,8 @@ Route::group(['middleware' => ['auth', 'role:user']], function () {
     Route::get('delete/mes_references/{id}', 'FrontController@deletemesref')->name('deletemesref');
     Route::get('edit/mes_references/{id}', 'FrontController@editmesref')->name('editmesref');
     Route::put('update/mes_references/{id}', 'FrontController@updatemesref')->name('updatemesref');
-    Route::post('view/enreg_reference', 'FrontController@enregreference')->name('enreg_reference');
+    Route::post('searchreference', 'BasefourController@searchreference')->name('searchreference');
+    Route::get('basefournisseurs/autocomplete', 'BasefourController@autocomplete')->name('basefournisseurs.autocomplete');
     Route::get('info/compte', 'FrontController@infocompte')->name('info_compte');
     Route::get('profile', 'FrontController@infocompte')->name('profile');
     Route::get('modifpass', 'FrontController@getmodifpass')->name('modifpass');
@@ -603,11 +605,14 @@ Route::group(['middleware' => ['auth', 'role:user']], function () {
     });
     Route::get('info/compteaut', 'FrontController@infocompteaut')->name('infocompteaut');
     Route::get('view/all_references/{id}', 'FrontController@viewallref')->name('viewallref');
+    Route::get('view/autocomplete', 'FrontController@autocomplete')->name('autocomplete');
+    Route::get('references/autocomplete', 'BasefourController@autocomplete')->name('basefournisseurs.autocomplete');
     Route::get('view/selectoperateur', 'FrontController@selectoperateur')->name('selectoperateur');
     Route::get('view/selectoperateur', 'FrontController@selectoperateur')->name('selectoperateur');
     Route::get('/recherche-offre', 'RechercheController@recherche')->name('recherche');
     Route::get('listspecabonne', 'FrontController@listspecabonne')->name('listspecabonne');
     Route::post('filtrerspec', 'FrontController@filtrerspec')->name('filtrerspec');
+    Route::post('specs/abonne/search', 'FrontController@filtrerspec')->name('specs.abonne.search');
     Route::get('my-souscription', 'HomeController@mySouscription')->name('my-souscription');
     Route::post('souscription/add-user', 'HomeController@addUserSouscription')->name('add_user_souscription');
     Route::get('souscription/delete-user/{id}', 'HomeController@deleteUserSouscription')->name('delete_user_souscription');
@@ -625,3 +630,5 @@ Route::group(['middleware' => ['auth', 'role:user']], function () {
 // Autocomplétion AJAX pour les barres de recherche
 Route::get('/autocomplete-reference', 'RechercheController@autocompleteReference')->name('autocomplete.reference');
 Route::get('/autocomplete-spec', 'RechercheController@autocompleteSpec')->name('autocomplete.spec');
+// Route désactivée pour éviter un conflit de routes
+// Route::post('specs/abonne/search', 'SpecController@searchAbonne')->name('specs.abonne.search');

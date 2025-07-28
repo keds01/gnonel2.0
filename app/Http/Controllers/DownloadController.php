@@ -74,14 +74,31 @@ class DownloadController extends Controller
         // Obtenir le type MIME du fichier
         $mime = mime_content_type($path) ?: 'application/octet-stream';
         
-        // Configurer les en-têtes pour la visualisation (inline au lieu de attachment)
-        $headers = [
-            'Content-Type' => $mime,
-            'Content-Disposition' => 'inline; filename="' . $filename . '"',
-        ];
+        // Déterminer l'extension du fichier
+        $extension = pathinfo($filename, PATHINFO_EXTENSION);
         
-        // Renvoyer le fichier avec les en-têtes corrects pour la visualisation
-        return response()->file($path, $headers);
+        // Si c'est un PDF, forcer l'affichage via un iframe
+        if (strtolower($extension) === 'pdf' || $mime === 'application/pdf') {
+            // Construire l'URL du fichier
+            $fileUrl = asset('images/uploads/' . $filename);
+            
+            // Créer une vue avec un iframe pour afficher le PDF
+            return view('pdf_viewer', [
+                'fileUrl' => $fileUrl,
+                'fileName' => $filename
+            ]);
+        } else {
+            // Pour les autres types de fichiers, utiliser les en-têtes standard
+            $headers = [
+                'Content-Type' => $mime,
+                'Content-Disposition' => 'inline; filename="' . $filename . '"',
+                // Ajout d'en-têtes supplémentaires pour empêcher le téléchargement
+                'X-Content-Type-Options' => 'nosniff'
+            ];
+            
+            // Renvoyer le fichier avec les en-têtes corrects pour la visualisation
+            return response()->file($path, $headers);
+        }
     }
     
     /**

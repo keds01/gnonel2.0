@@ -179,6 +179,9 @@ class SpecController extends Controller
   public function delete($id)
   {
     $spec = Spec::find($id);
+    if (!$spec) {
+        return redirect()->route('specifications.index')->with('delete_error', 'Spécification introuvable.');
+    }
     $a = $spec->lien;
     $spec->delete();
     Spec::deletefile('/images/uploads/' . $a);
@@ -188,6 +191,9 @@ class SpecController extends Controller
   public function deleteAdmin($id)
   {
     $spec = Spec::find($id);
+    if (!$spec) {
+        return redirect()->route('specifications.indexAdmin')->with('delete_error', 'Spécification introuvable.');
+    }
     $a = $spec->lien;
     $spec->delete();
     Spec::deletefile('/images/uploads/' . $a);
@@ -330,5 +336,60 @@ class SpecController extends Controller
         'Spécification 3'
       ]);
     }
+  }
+
+  public function searchAbonne(Request $request)
+  {
+    $pays = $request->pays;
+    $categorie = $request->categorie;
+    $motcle = $request->motcle;
+    $page = $request->page ?? 1;
+    $perPage = 12;
+
+    $query = DB::table('specs')
+      ->join('pays', 'pays.id', '=', 'specs.pays_id')
+      ->join('categories', 'categories.id', '=', 'specs.categorie_id')
+      ->where('specs.status', 1);
+
+    if ($pays) {
+      $query->where('specs.pays_id', $pays);
+    }
+    if ($categorie) {
+      $query->where('specs.categorie_id', $categorie);
+    }
+    if ($motcle) {
+      $query->where(function($q) use ($motcle) {
+        $q->where('specs.libelle', 'like', "%$motcle%")
+          ->orWhere('specs.contexte', 'like', "%$motcle%")
+          ->orWhere('categories.nom_categorie', 'like', "%$motcle%")
+          ->orWhere('pays.nom_pays', 'like', "%$motcle%")
+          ;
+      });
+    }
+
+    $total = $query->count();
+    $specs = $query
+      ->select('specs.*', 'categories.nom_categorie', 'pays.nom_pays')
+      ->orderBy('specs.created_at', 'desc')
+      ->skip(($page-1)*$perPage)
+      ->take($perPage)
+      ->get();
+
+    // Pagination HTML simple
+    $pagination = '';
+    $lastPage = ceil($total / $perPage);
+    if ($lastPage > 1) {
+      $pagination .= '<nav><ul class="pagination justify-content-center">';
+      for ($i = 1; $i <= $lastPage; $i++) {
+        $active = $i == $page ? 'active' : '';
+        $pagination .= '<li class="page-item ' . $active . '"><a href="#" class="page-link spec-page-link" data-page="' . $i . '">' . $i . '</a></li>';
+      }
+      $pagination .= '</ul></nav>';
+    }
+
+    return response()->json([
+      'data' => $specs,
+      'pagination' => $pagination
+    ]);
   }
 }

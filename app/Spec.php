@@ -15,7 +15,7 @@ class Spec extends Model
 
         $ftp_server = "ftp.gnonel.com";
         $ftp_username = "gnone1681928";
-        $ftp_password = "K0um1tch@1981";
+        $ftp_password = "fD6_sRdEfQBumep";
         // Connexion au serveur FTP
         $ftp_conn = ftp_connect($ftp_server);
         if (!$ftp_conn) {

@@ -64,6 +64,11 @@
                                 </tr>
                             </tbody>
                         </table>
+                        <div class="mt-4 text-center">
+                            <a href="{{ route('modifpass') }}" class="btn btn-primary">
+                                <i class="fe-lock"></i> Modifier le mot de passe
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>

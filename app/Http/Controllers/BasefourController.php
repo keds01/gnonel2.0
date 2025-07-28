@@ -168,52 +168,76 @@ class BasefourController extends Controller
 
   public function searchreference(Request $request)
   {
-    // Log pour le debug
-    \Log::info('Recherche de références', [
+    \Log::info('Recherche de références - Paramètres', [
       'pays_id' => $request->pays,
       'categorie_id' => $request->categorie,
-      'terme_recherche' => $request->reference
+      'terme_recherche' => $request->reference,
+      'session_id' => session()->getId()
     ]);
     
-    // Construction de la requête SQL pour trouver les références
-    $query = DB::table('references')
-      ->join('operateurs', 'operateurs.id', '=', 'references.operateur')
-      ->join('pays', 'pays.id', '=', 'operateurs.id_pays')
-      // Jointure avec categories pour le filtrage par catégorie
-      ->join('categories', 'categories.id', '=', 'references.type_marche')
-      // Filtrer par pays (obligatoire)
-      ->where('pays.id', $request->pays);
-    
-    // Filtrer par catégorie si spécifiée
-    if ($request->categorie && $request->categorie != '') {
-      $query->where('references.type_marche', $request->categorie);
+    if (empty($request->pays)) {
+      \Log::warning('Recherche de références: Pays non spécifié');
+      return response()->json(['data' => [], 'pagination' => '']);
     }
-    
-    // Filtrer par terme de recherche si spécifié
-    if ($request->reference && $request->reference != '') {
-      $searchTerm = $request->reference;
-      $query->where(function($q) use ($searchTerm) {
-        $q->where('references.libelle_marche', 'like', '%' . $searchTerm . '%')
-          ->orWhere('references.reference_marche', 'like', '%' . $searchTerm . '%');
-      });
+    try {
+      $query = DB::table('references')
+        ->join('operateurs', 'operateurs.id', '=', 'references.operateur')
+        ->join('pays', 'pays.id', '=', 'operateurs.id_pays')
+        ->join('categories', 'categories.id', '=', 'references.type_marche');
+      $query->where('references.status', '=', 1)
+            ->where('pays.id', '=', $request->pays);
+      if (!empty($request->categorie)) {
+        $query->where('references.type_marche', '=', $request->categorie);
+        \Log::info('Filtrage par catégorie: ' . $request->categorie);
+      }
+      if (!empty($request->reference)) {
+        $searchTerm = '%' . $request->reference . '%';
+        $query->where(function($q) use ($searchTerm) {
+          $q->where('references.libelle_marche', 'like', $searchTerm)
+            ->orWhere('references.reference_marche', 'like', $searchTerm)
+            ->orWhere('operateurs.raison_social', 'like', $searchTerm);
+        });
+        \Log::info('Filtrage par terme de recherche: ' . $request->reference);
+      }
+      $references = $query->select(
+          'references.idreference',
+          'references.libelle_marche',
+          'references.reference_marche',
+          'references.annee_execution',
+          'operateurs.raison_social as operateur', 
+          'operateurs.gnonelid as gnonelid', 
+          'pays.id as pays_id', 
+          'operateurs.id as operateur_id',
+          'categories.nom_categorie as categorie'
+      )
+      ->orderBy('references.created_at', 'desc')
+      ->paginate(10);
+      // Limiter la longueur des textes
+      foreach ($references as $reference) {
+        if (strlen($reference->libelle_marche) > 200) {
+          $reference->libelle_marche = substr($reference->libelle_marche, 0, 200) . '...';
+        }
+      }
+      // Si AJAX, retourner JSON paginé
+      if ($request->ajax()) {
+        return response()->json([
+          'data' => $references->items(),
+          'pagination' => $references->links()->render()
+        ]);
+      }
+      // Sinon, comportement existant (à adapter si besoin)
+      return response()->json($references);
+    } catch (\Exception $e) {
+      \Log::error('Erreur dans searchreference: ' . $e->getMessage(), [
+        'trace' => $e->getTraceAsString(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine()
+      ]);
+      return response()->json([
+        'error' => true,
+        'message' => $e->getMessage()
+      ], 500);
     }
-    
-    // Sélectionner les colonnes et exécuter la requête
-    $references = $query->select(
-        'references.*', 
-        'operateurs.raison_social as operateur', 
-        'operateurs.gnonelid as gnonelid', 
-        'pays.id as pays_id', 
-        'operateurs.id as operateur_id',
-        'categories.nom_categorie as categorie'
-    )
-    ->orderby('references.created_at', 'desc')
-    ->get();
-      
-    // Log des résultats pour le debug
-    \Log::info('Résultats de recherche', ['nombre_resultats' => count($references)]);
-      
-    return response()->json($references);
   }
   
   /**
@@ -281,6 +305,117 @@ class BasefourController extends Controller
       return response()->json($suggestions);
     } catch (\Exception $e) {
       \Log::error('Erreur dans getRccmSuggestions: ' . $e->getMessage());
+      return response()->json([]);
+    }
+  }
+  
+  /**
+   * Récupère les suggestions d'autocomplétion pour la recherche de références
+   * 
+   * @param Request $request
+   * @return \Illuminate\Http\JsonResponse
+   */
+  public function autocomplete(Request $request)
+  {
+    \Log::info('Recherche autocompletion basefournisseurs - Paramètres', [
+      'term' => $request->term,
+      'pays_id' => $request->pays_id,
+      'categorie_id' => $request->categorie_id,
+      'session_id' => session()->getId()
+    ]);
+    
+    if (empty($request->term) || strlen($request->term) < 2) {
+      return response()->json([]);
+    }
+    
+    try {
+      $searchTerm = '%' . $request->term . '%';
+      $query = DB::table('references')
+        ->join('operateurs', 'operateurs.id', '=', 'references.operateur')
+        ->join('pays', 'pays.id', '=', 'operateurs.id_pays')
+        ->join('categories', 'categories.id', '=', 'references.type_marche')
+        ->where('references.status', '=', 1);
+      
+      // Filtrer par pays si spécifié
+      if (!empty($request->pays_id)) {
+        $query->where('pays.id', '=', $request->pays_id);
+      }
+      
+      // Filtrer par catégorie si spécifié
+      if (!empty($request->categorie_id)) {
+        $query->where('references.type_marche', '=', $request->categorie_id);
+      }
+      
+      // Rechercher dans les champs pertinents
+      $query->where(function($q) use ($searchTerm) {
+        $q->where('references.libelle_marche', 'like', $searchTerm)
+          ->orWhere('references.reference_marche', 'like', $searchTerm)
+          ->orWhere('operateurs.raison_social', 'like', $searchTerm);
+      });
+      
+      // Sélectionner uniquement les champs nécessaires pour éviter les doublons
+      $suggestions = $query->select(
+          'references.libelle_marche',
+          'references.reference_marche',
+          'operateurs.raison_social as operateur_nom'
+      )
+      ->distinct()
+      ->limit(10)
+      ->get();
+      
+      // Formater les résultats pour l'autocomplétion
+      $results = [];
+      foreach ($suggestions as $suggestion) {
+        // Ajouter les libellés de marché
+        if (!empty($suggestion->libelle_marche) && stripos($suggestion->libelle_marche, $request->term) !== false) {
+          $results[] = [
+            'value' => $suggestion->libelle_marche,
+            'label' => $suggestion->libelle_marche . ' (Libellé)'
+          ];
+        }
+        
+        // Ajouter les références de marché
+        if (!empty($suggestion->reference_marche) && stripos($suggestion->reference_marche, $request->term) !== false) {
+          $results[] = [
+            'value' => $suggestion->reference_marche,
+            'label' => $suggestion->reference_marche . ' (Référence)'
+          ];
+        }
+        
+        // Ajouter les noms d'opérateurs
+        if (!empty($suggestion->operateur_nom) && stripos($suggestion->operateur_nom, $request->term) !== false) {
+          $results[] = [
+            'value' => $suggestion->operateur_nom,
+            'label' => $suggestion->operateur_nom . ' (Opérateur)'
+          ];
+        }
+        
+
+      }
+      
+      // Supprimer les doublons et limiter à 10 résultats
+      $uniqueResults = [];
+      $seenValues = [];
+      
+      foreach ($results as $result) {
+        if (!in_array($result['value'], $seenValues)) {
+          $seenValues[] = $result['value'];
+          $uniqueResults[] = $result;
+          
+          if (count($uniqueResults) >= 10) {
+            break;
+          }
+        }
+      }
+      
+      return response()->json($uniqueResults);
+      
+    } catch (\Exception $e) {
+      \Log::error('Erreur dans autocomplete: ' . $e->getMessage(), [
+        'trace' => $e->getTraceAsString(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine()
+      ]);
       return response()->json([]);
     }
   }

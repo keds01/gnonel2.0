@@ -60,10 +60,10 @@
                     <ul class="social-icon">
                         <li><a target="_blank" href="https://www.linkedin.com/company/gnonel-technologies"><i
                                     class="fa-brands fa-linkedin-in"></i></a></li>
-                        <li><a target="_blank" href="https://www.facebook.com/GnonelTechnologies"><i
+                        <li><a target="_blank" href="https://www.facebook.com/GnonelTechnologies/"><i
                                     class="fa-brands fa-facebook"></i></a></li>
-                        <li><a href="#"><i class="fa-brands fa-instagram"></i></a></li>
-                        <li><a href="#"><i class="fa-brands fa-tiktok"></i></a></li>
+                        <li><a target="_blank" href="https://www.instagram.com/gnonel_technologies/"><i class="fa-brands fa-instagram"></i></a></li>
+                        <li><a target="_blank" href="https://www.tiktok.com/@gnoneltechnologies"><i class="fa-brands fa-tiktok"></i></a></li>
                     </ul>
                 </div>
             </div>

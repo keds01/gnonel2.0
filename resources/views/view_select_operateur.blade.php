@@ -24,6 +24,9 @@
             <div class="col-12">
                 <div class="card">
                     <div class="card-body">
+                        <!-- Champ caché pour la recherche avancée -->
+                        <input type="hidden" id="reference" name="reference">
+                        
                         <div class="row">
                             <div class="col-12 col-sm-6 col-md-5">
                                 <div class="me-sm-3">
@@ -56,6 +59,37 @@
                                 </div>
                             </div><!-- end col-->
                         </div> <!-- end row -->
+                        
+                        <!-- Recherche avancée -->
+                        <div class="row mt-3">
+                            <div class="col-12">
+                                <div class="accordion" id="accordionSearch">
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header" id="headingAdvanced">
+                                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                                                data-bs-target="#collapseAdvanced" aria-expanded="false" aria-controls="collapseAdvanced">
+                                                Recherche avancée
+                                            </button>
+                                        </h2>
+                                        <div id="collapseAdvanced" class="accordion-collapse collapse" aria-labelledby="headingAdvanced" 
+                                            data-bs-parent="#accordionSearch">
+                                            <div class="accordion-body">
+                                                <div class="row">
+                                                    <div class="col-md-10">
+                                                        <input type="search" class="form-control my-1 my-lg-0" id="reference_advanced" name="reference_advanced" placeholder="Mot clé (libellé, opérateur, etc)">
+                                                    </div>
+                                                    <div class="col-md-2">
+                                                        <button id="search-advanced" type="button" class="btn btn-primary waves-effect waves-light w-100">
+                                                            <i class="mdi mdi-magnify me-1"></i> Rechercher
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div> <!-- end card -->
             </div> <!-- end col-->
@@ -72,14 +106,12 @@
                             <thead class="bg-primary text-white">
                                 <tr>
                                     <td>Index</td>
-                                    <td style="width:40%">Libellés</td>
-                                    <td style="width:20%">Autorité contractante</td>
+                                    <td style="width:60%">Libellés</td>
                                     <td>Année</td>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td></td>
                                     <td></td>
                                     <td></td>
                                     <td></td>
@@ -134,10 +166,27 @@
             })
 
 
-            $("#visualiser").on("click", function() {
+            // Fonction pour gérer la recherche avec ou sans terme avancé
+            function fetchReferences(terme_recherche = '') {
+                // Si aucun opérateur n'est sélectionné, ne rien faire
+                if (!$("#titulaire option:selected").val()) {
+                    alert("Veuillez sélectionner un opérateur");
+                    return;
+                }
+                
+                // Paramètres de l'appel AJAX
+                let url = "{{ url('view/all_references') }}/" + $("#titulaire option:selected").val();
+                let data = {};
+                
+                // Ajouter le terme de recherche si présent
+                if (terme_recherche) {
+                    data.reference = terme_recherche;
+                }
+                
                 $.ajax({
                     type: 'get',
-                    url: "{{ url('view/all_references') }}/" + $("#titulaire option:selected").val(),
+                    url: url,
+                    data: data,
                     dataType: 'json',
                     success: function(response) {
                         console.log(response.donnes);
@@ -159,20 +208,15 @@
                                 }
                                 var lib = data[i].libelle_marche;
                                 var anne = data[i].annee_execution;
-                                var autorite = data[i].autorite_contractante;
                                 var type = data[i].nom_categorie;
                                 tr += '<tr style="cursor:pointer" onclick="detail(' + id +
                                     ')">';
                                 tr += '<td style="cursor:pointer">' + numref + '</td>'
                                 //tr +='<td style="cursor:pointer">'+ref+'</td>';
-                                tr += '<td style="cursor:pointer;width:40%">' + (lib.length >
+                                tr += '<td style="cursor:pointer;width:60%">' + (lib.length >
                                         50 ? lib.substring(0,
                                             50) +
                                         '...' : lib) +
-                                    '</td>';
-                                tr += '<td style="cursor:pointer;width:20%">' + (autorite
-                                        .length > 30 ? autorite.substring(0, 30) + '...' :
-                                        autorite) +
                                     '</td>';
                                 tr += '<td style="cursor:pointer">' + anne + '</td>';
                                 tr += '</tr>';
@@ -184,50 +228,70 @@
 
                     }
                 });
-            })
+            }
+            
+            // Appel du visualiseur normal avec la nouvelle fonction
+            $("#visualiser").on("click", function() {
+                fetchReferences();
+            });
+            
+            // Gestionnaire pour la recherche avancée
+            $("#search-advanced").on("click", function() {
+                // Copier la valeur du champ de recherche avancée vers le champ caché
+                $("#reference").val($("#reference_advanced").val());
+                fetchReferences($("#reference_advanced").val());
+            });
+            
+            // Support de la touche Enter dans le champ de recherche avancée
+            $("#reference_advanced").on("keyup", function(event) {
+                if (event.key === "Enter") {
+                    $("#reference").val($(this).val());
+                    fetchReferences($(this).val());
+                }
+            });
+            
+            // Configuration de l'autocomplétion pour le champ de recherche avancée
+            $("#reference_advanced").autocomplete({
+                source: function(request, response) {
+                    // Récupérer l'ID de l'opérateur sélectionné
+                    var operateurId = $("#titulaire option:selected").val();
+                    
+                    $.ajax({
+                        url: "{{ route('autocomplete') }}",
+                        dataType: "json",
+                        data: {
+                            term: request.term,
+                            operateur_id: operateurId
+                        },
+                        success: function(data) {
+                            response(data);
+                        },
+                        error: function() {
+                            response([]);
+                        }
+                    });
+                },
+                minLength: 2,
+                delay: 300,
+                select: function(event, ui) {
+                    // Quand une suggestion est sélectionnée, la mettre dans le champ et déclencher la recherche
+                    $("#reference_advanced").val(ui.item.value);
+                    $("#reference").val(ui.item.value);
+                    fetchReferences(ui.item.value);
+                    return false;
+                }
+            }).autocomplete("instance")._renderItem = function(ul, item) {
+                // Personnalisation du rendu des suggestions
+                return $('<li>')
+                    .append('<div>' + item.label + '</div>')
+                    .appendTo(ul);
+            };
 
             detail = function(id) {
                 window.location.href = "{{ url('view/detailsreference') }}/" + id;
             }
 
-            $(document).on('change', '#pays', function() {
-                var idpays = $(this).val();
-                var div = $(this).parent();
-                var op = " ";
 
-                $.ajax({
-                    type: 'get',
-                    url: '{!! URL::to('ajaxgetautorite') !!}',
-                    data: {
-                        'id': idpays
-                    },
-                    dataType: 'json',
-                    success: function(data) {
-                        //console.log('success');
-
-                        //console.log(data);
-
-                        //op+='<option value="0" disabled="true" selected="true">--- Préselectionner le pays ---</option>';
-
-                        for (var i = 0; i < data.length; i++) {
-                            op += '<option value="' + data[i].id + '">' + data[i]
-                                .raison_social + '</option>';
-                        }
-
-                        if (data.length == 0) {
-                            op =
-                                '<option value="" disabled="true" selected="true">Aucune information</option>';
-                        }
-
-                        document.getElementById("autorite").innerHTML = op;
-
-                        //console.log(op);
-                    },
-                    error: function() {
-                        console.log('error');
-                    }
-                });
-            });
 
 
             $(document).on('change', '#payst', function() {

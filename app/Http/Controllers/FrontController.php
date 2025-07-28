@@ -177,21 +177,37 @@ class FrontController extends Controller
     //$valide=DB::table('references') ->where('status', '=', 1)->count();
     //$refuse=DB::table('references') ->where('status', '=', 2)->count();
     $att = DB::table('references')->where('status', '=', 0)->count();
-    $references = DB::table('references')
-      ->join('operateurs', 'operateurs.id', '=', 'references.operateur')
-      ->join('pays', 'pays.id', '=', 'operateurs.id_pays')
-      ->join('autoritecontractantes', 'autoritecontractantes.id', '=', 'references.autorite_contractante')
-      ->join('pays as p', 'p.id', '=', 'autoritecontractantes.id_pays')
-      ->join('categories', 'categories.id', '=', 'references.type_marche')
-      // ->join('users', 'users.ratache_operateur', '=', 'operateurs.id')
-      ->where('references.operateur', '=', $user)
-      ->where('references.status', '=', 1)
-      ->when($request->gnonelid, function ($query, $gnonelid) {
-        return $query->where('operateurs.gnonelid', 'LIKE', '%' . $gnonelid . '%');
-      })
-      ->select('references.*', 'autoritecontractantes.raison_social as autorite_contractante', 'nom_categorie', 'pays.nom_pays as paysau')
-      ->orderby('references.created_at', 'desc')
-      ->get();
+    \Log::info('Recherche de références pour opérateur - Paramètres', [
+    'operateur_id' => $user,
+    'terme_recherche' => $request->reference,
+    'session_id' => session()->getId()
+  ]);
+  
+  $references = DB::table('references')
+    ->join('operateurs', 'operateurs.id', '=', 'references.operateur')
+    ->join('pays', 'pays.id', '=', 'operateurs.id_pays')
+    ->join('autoritecontractantes', 'autoritecontractantes.id', '=', 'references.autorite_contractante')
+    ->join('pays as p', 'p.id', '=', 'autoritecontractantes.id_pays')
+    ->join('categories', 'categories.id', '=', 'references.type_marche')
+    // ->join('users', 'users.ratache_operateur', '=', 'operateurs.id')
+    ->where('references.operateur', '=', $user)
+    ->where('references.status', '=', 1)
+    ->when($request->gnonelid, function ($query, $gnonelid) {
+      return $query->where('operateurs.gnonelid', 'LIKE', '%' . $gnonelid . '%');
+    })
+    ->when($request->reference, function ($query, $searchTerm) {
+      \Log::info('Filtrage par terme de recherche avancée: ' . $searchTerm);
+      $searchTermWithWildcards = '%' . $searchTerm . '%';
+      return $query->where(function($q) use ($searchTermWithWildcards) {
+        $q->where('references.libelle_marche', 'like', $searchTermWithWildcards)
+          ->orWhere('references.reference_marche', 'like', $searchTermWithWildcards)
+          ->orWhere('operateurs.raison_social', 'like', $searchTermWithWildcards)
+          ->orWhere('autoritecontractantes.raison_social', 'like', $searchTermWithWildcards);
+      });
+    })
+    ->select('references.*', 'autoritecontractantes.raison_social as autorite_contractante', 'nom_categorie', 'pays.nom_pays as paysau', 'operateurs.raison_social')
+    ->orderby('references.created_at', 'desc')
+    ->get();
     // return view('index_user_autorite',compact('references','valide','refuse','att'));
 
     return response()->json(
@@ -201,6 +217,118 @@ class FrontController extends Controller
 
       ]
     );
+  }
+  
+  /**
+   * Récupère les suggestions d'autocomplétion pour la recherche de références
+   * 
+   * @param Request $request
+   * @return \Illuminate\Http\JsonResponse
+   */
+  public function autocomplete(Request $request)
+  {
+    \Log::info('Recherche autocompletion - Paramètres', [
+      'term' => $request->term,
+      'operateur_id' => $request->operateur_id,
+      'session_id' => session()->getId()
+    ]);
+    
+    if (empty($request->term) || strlen($request->term) < 2) {
+      return response()->json([]);
+    }
+    
+    try {
+      $searchTerm = '%' . $request->term . '%';
+      $query = DB::table('references')
+        ->join('operateurs', 'operateurs.id', '=', 'references.operateur')
+        ->join('autoritecontractantes', 'autoritecontractantes.id', '=', 'references.autorite_contractante')
+        ->where('references.status', '=', 1);
+      
+      // Si un opérateur est spécifié, limiter les résultats à cet opérateur
+      if (!empty($request->operateur_id)) {
+        $query->where('references.operateur', '=', $request->operateur_id);
+      }
+      
+      // Rechercher dans les champs pertinents
+      $query->where(function($q) use ($searchTerm) {
+        $q->where('references.libelle_marche', 'like', $searchTerm)
+          ->orWhere('references.reference_marche', 'like', $searchTerm)
+          ->orWhere('operateurs.raison_social', 'like', $searchTerm)
+          ->orWhere('autoritecontractantes.raison_social', 'like', $searchTerm);
+      });
+      
+      // Sélectionner uniquement les champs nécessaires pour éviter les doublons
+      $suggestions = $query->select(
+          'references.libelle_marche',
+          'references.reference_marche',
+          'operateurs.raison_social as operateur_nom',
+          'autoritecontractantes.raison_social as autorite_nom'
+      )
+      ->distinct()
+      ->limit(10)
+      ->get();
+      
+      // Formater les résultats pour l'autocomplétion
+      $results = [];
+      foreach ($suggestions as $suggestion) {
+        // Ajouter les libellés de marché
+        if (!empty($suggestion->libelle_marche) && stripos($suggestion->libelle_marche, $request->term) !== false) {
+          $results[] = [
+            'value' => $suggestion->libelle_marche,
+            'label' => $suggestion->libelle_marche . ' (Libellé)'
+          ];
+        }
+        
+        // Ajouter les références de marché
+        if (!empty($suggestion->reference_marche) && stripos($suggestion->reference_marche, $request->term) !== false) {
+          $results[] = [
+            'value' => $suggestion->reference_marche,
+            'label' => $suggestion->reference_marche . ' (Référence)'
+          ];
+        }
+        
+        // Ajouter les noms d'opérateurs
+        if (!empty($suggestion->operateur_nom) && stripos($suggestion->operateur_nom, $request->term) !== false) {
+          $results[] = [
+            'value' => $suggestion->operateur_nom,
+            'label' => $suggestion->operateur_nom . ' (Opérateur)'
+          ];
+        }
+        
+        // Ajouter les noms d'autorités contractantes
+        if (!empty($suggestion->autorite_nom) && stripos($suggestion->autorite_nom, $request->term) !== false) {
+          $results[] = [
+            'value' => $suggestion->autorite_nom,
+            'label' => $suggestion->autorite_nom . ' (Autorité)'
+          ];
+        }
+      }
+      
+      // Supprimer les doublons et limiter à 10 résultats
+      $uniqueResults = [];
+      $seenValues = [];
+      
+      foreach ($results as $result) {
+        if (!in_array($result['value'], $seenValues)) {
+          $seenValues[] = $result['value'];
+          $uniqueResults[] = $result;
+          
+          if (count($uniqueResults) >= 10) {
+            break;
+          }
+        }
+      }
+      
+      return response()->json($uniqueResults);
+      
+    } catch (\Exception $e) {
+      \Log::error('Erreur dans autocomplete: ' . $e->getMessage(), [
+        'trace' => $e->getTraceAsString(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine()
+      ]);
+      return response()->json([]);
+    }
   }
 
   public function enregoperateur()
@@ -570,6 +698,16 @@ class FrontController extends Controller
 
     $specs = $specs->paginate(12);
 
+    // Vérifier si des specs existent dans la base de données
+    $specsCount = DB::table('specs')->where('status', 1)->count();
+    
+    // Ajouter un message d'information pour l'utilisateur
+    $message = '';
+    if($specsCount == 0) {
+      $message = 'Aucune spécification technique n\'est disponible actuellement.'; 
+    } else {
+      $message = 'Veuillez sélectionner un pays et cliquer sur "Visualiser" pour voir les spécifications disponibles.'; 
+    }
 
     $idpays = "";
     if (Auth::user()->ratache_operateur != null) {
@@ -592,7 +730,7 @@ class FrontController extends Controller
     $categories = DB::table('categories')->orderby('code_categorie', 'asc')->get();
 
 
-    return view('spec_abonne', compact('specs', 'pays', 'categories'));
+    return view('spec_abonne', compact('specs', 'pays', 'categories', 'message', 'specsCount'));
   }
   public function getmodifpass()
   {
@@ -715,50 +853,107 @@ class FrontController extends Controller
    */
   public function filtrerspec(Request $request)
   {
-    $pays = $request->pays;
-    $categorie = $request->categorie;
-    $recherche = $request->recherche;
-    
-    $verif = User::verifabonnement(Auth::user());
-
-    $query = DB::table('specs')
-      ->join('categories', 'categories.id', '=', 'specs.categorie')
-      ->join('pays', 'pays.id', '=', 'specs.id_pays')
-      ->join('users', 'users.id', '=', 'specs.user_id')
-      ->select(
-        'specs.*',
-        'categories.nom_categorie',
-        'pays.nom_pays'
-      )
-      ->where('specs.status', 1);
+    try {
+      $pays = $request->pays;
+      $categorie = $request->categorie;
+      $recherche = $request->recherche;
       
-    // Condition pour utilisateurs non abonnés
-    if ($verif == null && Auth::user()->type_user == 3) {
-      $query = $query->where('users.role', 'admin');
-    }
-    
-    // Filtrer par pays si sélectionné
-    if ($pays != 0 && $pays != null) {
-      $query = $query->where('specs.id_pays', $pays);
-    }
-    
-    // Filtrer par catégorie si sélectionnée
-    if ($categorie != 0 && $categorie != null) {
-      $query = $query->where('specs.categorie', $categorie);
-    }
-    
-    // Recherche par mot-clé si spécifié
-    if ($recherche != null && $recherche != '') {
-      $query = $query->where('specs.libelle', 'LIKE', '%' . $recherche . '%');
-    }
-    
-    $results = $query->get();
-    
-    return response()->json([
-      'donnes' => $results
-    ]);
-  }
+      // Log pour déboguer les valeurs reçues
+      \Log::info('Filtrage des specs', [
+          'pays' => $pays,
+          'categorie' => $categorie,
+          'recherche' => $recherche
+      ]);
+      
+      $verif = User::verifabonnement(Auth::user());
 
+      $query = DB::table('specs')
+        ->join('categories', 'categories.id', '=', 'specs.categorie_id')
+        ->join('pays', 'pays.id', '=', 'specs.pays_id')
+        ->join('users', 'users.id', '=', 'specs.user_id')
+        ->select(
+          'specs.*',
+          'categories.nom_categorie',
+          'pays.nom_pays'
+        )
+        ->where('specs.status', 1);
+        
+      // Condition pour utilisateurs non abonnés
+      if ($verif == null && Auth::user()->type_user == 3) {
+        $query = $query->where('users.role', 'admin');
+      }
+      
+      // Filtrer par pays si sélectionné (correction de la vérification)
+      if (!empty($pays)) {
+        $query = $query->where('specs.pays_id', $pays);
+      }
+      
+      // Filtrer par catégorie si sélectionnée (correction de la vérification)
+      if (!empty($categorie)) {
+        $query = $query->where('specs.categorie_id', $categorie);
+      }
+      
+      // Recherche par mot-clé si spécifié
+      if (!empty($recherche)) {
+        $query = $query->where('specs.libelle', 'LIKE', '%' . $recherche . '%');
+      }
+      
+      // Pagination pour les résultats
+      $page = $request->input('page', 1);
+      $perPage = 12;
+      $offset = ($page - 1) * $perPage;
+      
+      // Compter le total d'abord
+      $total = $query->count();
+      
+      // Appliquer la pagination
+      $results = $query->offset($offset)->limit($perPage)->get();
+      
+      // Générer la pagination HTML
+      $totalPages = ceil($total / $perPage);
+      $paginationHtml = '';
+      
+      if ($totalPages > 1) {
+          $paginationHtml = '<div class="d-flex justify-content-center"><nav aria-label="Page navigation">';
+          $paginationHtml .= '<ul class="pagination">';
+          
+          // Page précédente
+          if ($page > 1) {
+              $paginationHtml .= '<li class="page-item"><a class="page-link pagination-link" data-page="' . ($page - 1) . '" href="#">Précédent</a></li>';
+          }
+          
+          // Pages numérotées
+          for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++) {
+              $active = ($i == $page) ? 'active' : '';
+              $paginationHtml .= '<li class="page-item ' . $active . '"><a class="page-link pagination-link" data-page="' . $i . '" href="#">' . $i . '</a></li>';
+          }
+          
+          // Page suivante
+          if ($page < $totalPages) {
+              $paginationHtml .= '<li class="page-item"><a class="page-link pagination-link" data-page="' . ($page + 1) . '" href="#">Suivant</a></li>';
+          }
+          
+          $paginationHtml .= '</ul></nav></div>';
+      }
+      
+      return response()->json([
+        'data' => $results,
+        'pagination' => $paginationHtml,
+        'total' => $total,
+        'current_page' => $page,
+        'total_pages' => $totalPages
+      ]);
+      
+    } catch (\Exception $e) {
+      \Log::error('Erreur lors du filtrage des specs: ' . $e->getMessage());
+      return response()->json([
+        'error' => 'Une erreur est survenue lors du filtrage',
+        'message' => $e->getMessage(),
+        'data' => []
+      ], 500);
+    }
+  }
+  
   /**
    * Fournit des suggestions pour l'autocomplétion de la barre de recherche publique des specs
    * 
