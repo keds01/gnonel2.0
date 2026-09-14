@@ -763,3 +763,30 @@ Route::get('/autocomplete-spec', 'RechercheController@autocompleteSpec')->name('
 
 // Route de debug FedaPay
 Route::get('/debug/fedapay', 'AbonnementController@debugFedapay')->name('debug.fedapay');
+
+// ==================== GALERIE D'ÉVÉNEMENTS ====================
+
+// Routes publiques (Front-Office)
+Route::get('/galerie', 'GalleryController@publicIndex')->name('gallery.public.index');
+Route::get('/galerie/{id}', 'GalleryController@publicShow')->name('gallery.public.show');
+
+// Routes pour les likes (AJAX)
+Route::post('/gallery/like/event/{id}', 'GalleryController@likeEvent')->name('gallery.like.event');
+Route::post('/gallery/like/photo/{id}', 'GalleryController@likePhoto')->name('gallery.like.photo');
+
+// Routes d'administration (Back-Office)
+Route::group(['middleware' => ['auth', 'role:admin']], function () {
+    Route::get('/admin/galerie', 'GalleryController@index')->name('gallery.admin.index');
+    Route::get('/admin/galerie/create', 'GalleryController@create')->name('gallery.admin.create');
+    Route::post('/admin/galerie', 'GalleryController@store')->name('gallery.admin.store');
+    Route::get('/admin/galerie/{id}', 'GalleryController@show')->name('gallery.admin.show');
+    Route::get('/admin/galerie/{id}/edit', 'GalleryController@edit')->name('gallery.admin.edit');
+    Route::post('/admin/galerie/{id}', 'GalleryController@update')->name('gallery.admin.update');
+    Route::delete('/admin/galerie/{id}', 'GalleryController@destroy')->name('gallery.admin.destroy');
+    
+    // Routes pour la gestion des photos
+    Route::post('/admin/galerie/{eventId}/bulk-upload', 'GalleryController@bulkUpload')->name('gallery.admin.bulk-upload');
+    Route::post('/admin/galerie/photo/{photoId}', 'GalleryController@updatePhoto')->name('gallery.admin.update-photo');
+    Route::delete('/admin/galerie/photo/{photoId}', 'GalleryController@deletePhoto')->name('gallery.admin.delete-photo');
+    Route::post('/admin/galerie/photo/{photoId}/set-cover', 'GalleryController@setAsCover')->name('gallery.admin.set-cover');
+});

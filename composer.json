@@ -13,7 +13,7 @@
         "fideloper/proxy": "^4.4",
         "fruitcake/laravel-cors": "^2.0",
         "guzzlehttp/guzzle": "^6.3.1|^7.0.1",
-        "laravel/framework": "^7.29",
+        "laravel/framework": "7.30.7",
         "laravel/tinker": "^2.5",
         "laravel/ui": "^2.4",
         "tecnickcom/tcpdf": "^6.10"
@@ -25,6 +25,7 @@
         "nunomaduro/collision": "^4.3",
         "phpunit/phpunit": "^8.5.8|^9.3.3"
     },
+    "minimum-stability": "stable",
     "config": {
         "optimize-autoloader": true,
         "preferred-install": "dist",
@@ -52,7 +53,7 @@
             "app/Helpers/functions.php"
         ]
     },
-    "minimum-stability": "dev",
+    "minimum-stability": "stable",
     "prefer-stable": true,
     "scripts": {
         "post-autoload-dump": [
