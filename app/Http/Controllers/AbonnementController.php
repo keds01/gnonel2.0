@@ -1,0 +1,991 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Validator;
+use App\Abonnement;
+use App\User;
+use App\Recommander;
+use App\Categorieabonnement;
+// ANCIENS INTEGRATEURS - CONSERVES MAIS DESACTIVES
+// use App\PayGateGlobalHelper;
+// use CinetPay\CinetPay;
+
+// NOUVEAU INTEGRATEUR ACTIF
+use App\FedaPayHelper;
+use Carbon\Carbon;
+use Exception;
+use Illuminate\Support\Facades\Log;
+use GuzzleHttp\Client;
+
+class AbonnementController extends Controller
+{
+
+
+    public function index()
+    {
+        User::admin(Auth::user());
+        $categories = Categorieabonnement::all();
+        $abonnements = Abonnement::all();
+        return view('abonnements/index', compact('abonnements', 'categories'));
+    }
+
+    public function store(Request $request)
+    {
+        User::admin(Auth::user());
+
+        $validator = Validator::make(
+            $request->all(),
+            [
+                'libelle' => 'required',
+                'monnaie' => 'required',
+                'count' => 'required|numeric|min:1',
+                'prix_gros' => 'required|numeric|min:0',
+            ]
+        );
+
+        if ($validator->fails()) {
+            return redirect(route('abonnements.index'))->withErrors($validator->errors());
+        } else {
+            $abonnement = new Abonnement;
+            $abonnement->libelle = $request->libelle;
+            $abonnement->monnaie = $request->monnaie;
+            $abonnement->count = $request->count;
+            $abonnement->prix_gros = $request->prix_gros;
+            $abonnement->is_pack_fixe = $request->is_pack_fixe ?? 1; // Par défaut, pas de bonus
+            
+            // Valeurs par défaut pour compatibilité
+            $abonnement->prix = $request->prix ?? ($request->prix_gros / $request->count); // Prix unitaire calculé
+            $abonnement->description = $request->description ?? "Pack de {$request->count} licences";
+            $abonnement->categorie = $request->categorie ?? 1;
+            $abonnement->nbjours = $request->nbjours ?? 365;
+            $abonnement->choixaut = $request->choixaut ?? 1;
+            $abonnement->choixop = $request->choixop ?? 1;
+            $abonnement->prix_exo = $request->prix_exo ?? 0;
+
+            $abonnement->save();
+            return redirect()->route('abonnements.index')->with('add_ok', '');
+        }
+    }
+
+    public function edit($id)
+    {
+        User::admin(Auth::user());
+        $categories = Categorieabonnement::all();
+        $abonnements = Abonnement::all();
+        $abonnement = Abonnement::find($id);
+        return view('abonnements/index', compact('abonnement', 'abonnements', 'categories'));
+    }
+
+    public function update($id, Request $request)
+    {
+        $validator = Validator::make(
+            $request->all(),
+            [
+                'libelle' => 'required',
+                'monnaie' => 'required',
+                'count' => 'required|numeric|min:1',
+                'prix_gros' => 'required|numeric|min:0',
+            ]
+        );
+
+        if ($validator->fails()) {
+            return redirect(route('abonnements.index'))->withErrors($validator->errors());
+        } else {
+            $abonnement = Abonnement::find($id);
+            $abonnement->libelle = $request->libelle;
+            $abonnement->monnaie = $request->monnaie;
+            $abonnement->count = $request->count;
+            $abonnement->prix_gros = $request->prix_gros;
+            $abonnement->is_pack_fixe = $request->is_pack_fixe ?? 1; // Par défaut, pas de bonus
+            
+            // Valeurs par défaut pour compatibilité
+            $abonnement->prix = $request->prix ?? ($request->prix_gros / $request->count); // Prix unitaire calculé
+            $abonnement->description = $request->description ?? "Pack de {$request->count} licences";
+            $abonnement->categorie = $request->categorie ?? 1;
+            $abonnement->nbjours = $request->nbjours ?? 365;
+            $abonnement->choixaut = $request->choixaut ?? 1;
+            $abonnement->choixop = $request->choixop ?? 1;
+            $abonnement->prix_exo = $request->prix_exo ?? 0;
+            
+            $abonnement->save();
+            return redirect()->route('abonnements.index')->with('update_ok', '');
+        }
+    }
+
+    public function delete($id)
+    {
+        User::admin(Auth::user());
+        $abonnement = Abonnement::find($id);
+        $abonnement->delete();
+        return redirect()->route('abonnements.index')->with('delete_ok', '');
+    }
+
+    public function ajaxbonnement($libelle)
+    {
+        $abonnement = Abonnement::where('id', $libelle)->first();
+        return response()->json($abonnement);
+    }
+
+
+    public function index_choix_abonement()
+    {
+
+        dd('ok choix');
+
+        $pays = DB::table('pays')->orderby('nom_pays')->get();
+
+        $abonnements = DB::table('abonnement')->get();
+
+        dd($abonnements);
+
+        return view('views_choix_abonnement', compact('pays', 'abonnements'));
+    }
+
+
+
+    public function choix_souscription()
+    {
+        $data = request()->validate([
+            'soumissionnaires' => ['nullable', 'max:30'],
+        ]);
+
+        // Récupérer la valeur avec valeur par défaut si non présente
+        $soumissionnaires = $data['soumissionnaires'] ?? null;
+        
+        // Récupérer les autres paramètres depuis la requête
+        $offre = request('offre');
+        $pays = DB::table('pays')->orderby('nom_pays')->get();
+        $abonnements = DB::table('abonnement')->get();
+        $secteur_activites = DB::table('secteuractivite')->get();
+        
+        // dd($soumissionnaires); // Décommenter pour debug
+
+        return view('view_creer_abonne', compact('offre', 'pays', 'soumissionnaires', 'abonnements', 'secteur_activites'));
+    }
+
+    public function valider_souscription($souscription)
+    {
+        try {
+            Log::info('FedaPay - Début valider_souscription pour ID: ' . $souscription);
+            
+            $souscriptions = DB::table('souscriptions')->where('idsouscription', '=', $souscription)
+                ->join('abonnement', 'abonnement.id', '=', 'souscriptions.idabonnement')
+                ->get();
+            
+            Log::info('FedaPay - Souscriptions trouvées: ' . $souscriptions->count());
+            
+            if ($souscriptions->isEmpty()) {
+                Log::error('FedaPay - Souscription non trouvée: ' . $souscription);
+                return redirect()->back()->with('flash_message_error', 'Erreur: Souscription non trouvée');
+            }
+            
+            // Préparation des données
+            $description_du_paiement = $souscriptions[0]->libelle;
+            
+            // CORRECTION: Calculer le montant si vide (pack fixe)
+            $montant_a_payer = $souscriptions[0]->montant_finale_apaye;
+            if (empty($montant_a_payer) && $souscriptions[0]->is_pack_fixe == 1) {
+                $montant_a_payer = $souscriptions[0]->prix_gros;
+            }
+            
+            Log::info('FedaPay - Montant à payer: ' . $montant_a_payer);
+            
+            // Vérifier que le montant est valide
+            if (empty($montant_a_payer) || $montant_a_payer <= 0) {
+                Log::error('FedaPay - Montant invalide: ' . $montant_a_payer);
+                return redirect()->back()->with('flash_message_error', 'Erreur: Montant de paiement invalide');
+            }
+            
+            // Vérifier si FedaPay est configuré
+            if (!FedaPayHelper::isConfigured()) {
+                Log::error('FedaPay - Clé API non configurée!');
+                return redirect()->back()->with('flash_message_error', 'Erreur: FedaPay non configuré. Contactez l\'administrateur.');
+            }
+            
+            $return_url = url("/return-subscription");
+            $cancel_url = url("/cancel-subscription");
+            $id_transaction = $souscriptions[0]->idsouscription . '_' . date("YmdHis") . '_' . $souscriptions[0]->iduser;
+
+            Log::info('FedaPay - Appel generatePaymentLink avec transaction: ' . $id_transaction);
+
+            // NOUVEAU: Utilisation de FedaPay
+            $responseData = FedaPayHelper::generatePaymentLink(
+                $id_transaction,
+                $montant_a_payer,
+                $description_du_paiement,
+                $return_url,
+                $cancel_url,
+                auth()->user(),
+                $souscriptions[0]->idsouscription
+            );
+
+            Log::info('FedaPay - Réponse reçue: ' . json_encode($responseData));
+
+            if (isset($responseData['error'])) {
+                Log::error('FedaPay - Erreur retournée: ' . $responseData['error']);
+                return redirect()->back()->with('flash_message_error', 'Erreur FedaPay: ' . $responseData['error']);
+            }
+
+            // Redirection vers la page de paiement FedaPay
+            if (isset($responseData['data']['payment_url'])) {
+                Log::info('FedaPay - URL de paiement générée: ' . $responseData['data']['payment_url']);
+                return redirect()->away($responseData['data']['payment_url']);
+            } else {
+                Log::error('FedaPay - URL de paiement non présente dans la réponse');
+                return redirect()->back()->with('flash_message_error', 'Erreur: URL de paiement non générée');
+            }
+        } catch (Exception $e) {
+            Log::error('FedaPay - Exception valider_souscription: ' . $e->getMessage());
+            Log::error('FedaPay - Stack trace: ' . $e->getTraceAsString());
+            return redirect()->back()->with('flash_message_error', 'Erreur technique: ' . $e->getMessage());
+        }
+    }
+
+
+    function getRamdomText($n)
+    {
+        $characters = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        $randomString = '';
+
+        for ($i = 0; $i < $n; $i++) {
+            $index = rand(0, strlen($characters) - 1);
+            $randomString .= $characters[$index];
+        }
+        return $randomString;
+    }
+
+
+    public function notify_url(Request $request)
+    {
+        // PayGateGlobal envoie les données en JSON via POST
+        $input = $request->json()->all();
+        $identifier = $input['identifier'] ?? null;
+        Log::info("PayGateGlobal notify: " . json_encode($input));
+
+        if (!empty($identifier)) {
+            try {
+                $response = PayGateGlobalHelper::checkTransaction($identifier);
+
+                // On vérifie que le paiement est valide (code 00 = succès)
+                if ($response['code'] == '00') {
+                    Log::info("Paiement valide");
+                    $souscription = explode("_", $identifier)[0];
+                    $paymentData = $response['data'];
+
+                    $sous = DB::table('souscriptions')->where('idsouscription', '=', $souscription)
+                        ->join('abonnement', 'abonnement.id', '=', 'souscriptions.idabonnement')->first();
+
+
+                    $user = DB::table('users')->where('id', '=', $sous->iduser)->first();
+                    if ($sous->montant_finale_apaye == $paymentData["amount"]) {
+                        Log::info("Paiement complet");
+                        $date = Carbon::now();
+                        $date->addDays($sous->nbjours);
+                        DB::table('souscriptions')->where('idsouscription', $souscription)->update([
+                            'referencepaiement' => $paymentData['tx_reference'] ?? $identifier,
+                            'statut' => 1,
+                            'identifier' => $paymentData['tx_reference'] ?? $identifier,
+                            'amount' => $paymentData["amount"],
+                            'payment_method' => $paymentData["payment_method"],
+                            'status_p' => $paymentData["status"],
+                            'date_fin' => Carbon::parse($date)->format('Y-m-d'),
+                            'payment_reference' => $paymentData['payment_reference'] ?? $identifier
+                        ]);
+
+                        if ($user->ratache_autorite != null) {
+                            $update = DB::table('users')
+                                ->where('id', $user->id)
+                                ->update(['type_user' => 5]);
+                        } elseif ($user->ratache_operateur != null) {
+                            $update = DB::table('users')
+                                ->where('id', $user->id)
+                                ->update(['type_user' => 4]);
+                        }
+                    }
+
+                    die();
+                } else {
+                    Log::info("Paiement echoue");
+                    echo 'Echec, votre paiement a échoué pour cause : ' . $response['message'];
+                    die();
+                }
+            } catch (Exception $e) {
+                // Une erreur s'est produite
+                echo "Erreur :" . $e->getMessage();
+            }
+        } else {
+            // redirection vers la page d'accueil
+            die();
+        }
+    }
+
+    public function return_url()
+    {
+        // PayGateGlobal redirige ici après paiement avec les données en POST
+        $input = request()->json()->all();
+
+        // Si PayGateGlobal n'envoie pas de données JSON, essayer les données POST classiques
+        if (empty($input)) {
+            $input = request()->all();
+        }
+
+        $identifier = $input['identifier'] ?? request()->query('identifier');
+
+        if (!empty($identifier)) {
+            try {
+                // Vérifier le statut du paiement via l'API PayGateGlobal
+                $response = PayGateGlobalHelper::checkTransaction($identifier);
+
+                if ($response['code'] == '00') {
+                    Log::info("Paiement validé via return_url: " . $identifier);
+                    // Le paiement est réussi, rediriger vers home avec succès
+                    return redirect()->route('home')->with('flash_message_success', 'Paiement effectué avec succès!');
+                } else {
+                    Log::info("Paiement non validé via return_url: " . $identifier);
+                    // Le paiement n'est pas réussi, rediriger vers pricing avec erreur
+                    return redirect()->route('pricing')->with('flash_message_error', 'Paiement non validé. Veuillez réessayer.');
+                }
+            } catch (Exception $e) {
+                Log::error('Exception return_url: ' . $e->getMessage());
+                return redirect()->route('pricing')->with('flash_message_error', 'Erreur technique: ' . $e->getMessage());
+            }
+        }
+
+        // Redirection par défaut vers home
+        return redirect()->route('home');
+    }
+
+    public function cancel_url()
+    {
+        # code...
+    }
+
+    /**
+     * Webhook pour recevoir les notifications de paiement FedaPay
+     */
+    public function fedapay_webhook(Request $request)
+    {
+        $payload = $request->getContent();
+        $signature = $request->header('X-FEDAPAY-SIGNATURE');
+        
+        Log::info("FedaPay webhook received: " . $payload);
+
+        // Vérifier la signature si le secret est configuré
+        $webhookSecret = env('FEDAPAY_WEBHOOK_SECRET');    // Vérification de signature désactivée temporairement
+    // if ($webhookSecret && $signature) {
+    //     if (!FedaPayHelper::verifyWebhookSignature($payload, $signature, $webhookSecret)) {
+    //         Log::error("FedaPay - Invalid webhook signature");
+    //         return response()->json(['error' => 'Invalid signature'], 400);
+    //     }
+    // }
+
+        $data = json_decode($payload, true);
+        
+        if (!$data) {
+            Log::error("FedaPay - Invalid webhook payload");
+            return response()->json(['error' => 'Invalid payload'], 400);
+        }
+
+        // Traiter l'événement
+        $eventName = $data['name'] ?? null;
+        $transaction = $data['entity'] ?? null;
+
+        if ($eventName === 'transaction.approved' && $transaction) {
+            $transactionId = $transaction['id'] ?? null;
+            $reference = $transaction['reference'] ?? null;
+
+            $souscriptionId = $this->findUniquePendingSouscriptionIdForFedapayTransaction($transaction, true);
+            if (!$souscriptionId) {
+                Log::warning('FedaPay webhook: aucune souscription unique trouvée (approved + email + montant + nom)', [
+                    'fedapay_transaction_id' => $transactionId,
+                    'reference' => $reference,
+                    'amount' => $transaction['amount'] ?? null,
+                    'status' => $transaction['status'] ?? null,
+                ]);
+            }
+
+            if ($souscriptionId) {
+                    try {
+                        $sous = DB::table('souscriptions')
+                            ->where('idsouscription', '=', $souscriptionId)
+                            ->join('abonnement', 'abonnement.id', '=', 'souscriptions.idabonnement')
+                            ->first();
+
+                        if ($sous) {
+                            $user = DB::table('users')->where('id', '=', $sous->iduser)->first();
+                            if (!$user) {
+                                Log::error('FedaPay webhook: utilisateur introuvable id=' . $sous->iduser);
+                            } else {
+                            
+                            $date = Carbon::now();
+                            $date->addDays($sous->nbjours);
+
+                            $pmRaw = $transaction['payment_method'] ?? null;
+                            $paymentMethodStr = is_array($pmRaw)
+                                ? (string) ($pmRaw['brand'] ?? $pmRaw['method'] ?? 'FedaPay')
+                                : (string) ($pmRaw ?? 'FedaPay');
+                            
+                            DB::table('souscriptions')->where('idsouscription', $souscriptionId)->update([
+                                'referencepaiement' => $transactionId,
+                                'statut' => 1,
+                                'identifier' => $reference,
+                                'amount' => $transaction['amount'] ?? 0,
+                                'payment_method' => $paymentMethodStr,
+                                'status_p' => 'approved',
+                                'date_fin' => Carbon::parse($date)->format('Y-m-d'),
+                                'payment_reference' => $transactionId
+                            ]);
+
+                            // Mettre à jour le type d'utilisateur
+                            if ($user->ratache_autorite != null) {
+                                DB::table('users')
+                                    ->where('id', $user->id)
+                                    ->update(['type_user' => 5]);
+                            } elseif ($user->ratache_operateur != null) {
+                                DB::table('users')
+                                    ->where('id', $user->id)
+                                    ->update(['type_user' => 4]);
+                            }
+                            
+                            Log::info("FedaPay - Payment approved for souscription: " . $souscriptionId);
+                            }
+                        } else {
+                            Log::warning('FedaPay webhook: souscription introuvable pour idsouscription=' . $souscriptionId);
+                        }
+                    } catch (Exception $e) {
+                        Log::error("FedaPay - Webhook processing error: " . $e->getMessage());
+                    }
+            }
+        } elseif (in_array($eventName, ['transaction.declined', 'transaction.canceled'], true) && is_array($transaction)) {
+            Log::info("FedaPay - Payment " . $eventName . " for transaction: " . ($transaction['id'] ?? 'unknown'));
+            
+            // Traiter les annulations et refus
+            $reference = $transaction['reference'] ?? null;
+            $souscriptionId = $this->findUniquePendingSouscriptionIdForFedapayTransaction($transaction, false);
+
+            if ($souscriptionId) {
+                    try {
+                        $pmRaw = $transaction['payment_method'] ?? null;
+                        $paymentMethodStr = is_array($pmRaw)
+                            ? (string) ($pmRaw['brand'] ?? $pmRaw['method'] ?? 'FedaPay')
+                            : (string) ($pmRaw ?? 'FedaPay');
+                        // Marquer la souscription comme annulée (statut = 2)
+                        DB::table('souscriptions')->where('idsouscription', $souscriptionId)->update([
+                            'statut' => 2, // 2 = annulé
+                            'referencepaiement' => $transaction['id'] ?? null,
+                            'identifier' => $reference,
+                            'amount' => $transaction['amount'] ?? 0,
+                            'payment_method' => $paymentMethodStr,
+                            'status_p' => $eventName,
+                            'updated_at' => now()
+                        ]);
+                        
+                        Log::info("FedaPay - Souscription " . $souscriptionId . " marquée comme " . $eventName);
+                    } catch (Exception $e) {
+                        Log::error("FedaPay - Erreur traitement " . $eventName . ": " . $e->getMessage());
+                    }
+            } elseif ($reference) {
+                Log::warning('FedaPay webhook: declined/canceled sans idsouscription résolu', [
+                    'event' => $eventName,
+                    'reference' => $reference,
+                    'metadata' => $transaction['metadata'] ?? null,
+                ]);
+            }
+        }
+
+        return response()->json(['status' => 'success'], 200);
+    }
+
+    /**
+     * Payeur FedaPay : entity.customer ou metadata.paid_customer (même logique que les logs dashboard).
+     */
+    private function extractFedapayPayerProfile(array $transaction): ?array
+    {
+        $customer = $transaction['customer'] ?? null;
+        if (is_array($customer) && !empty($customer['email'])) {
+            return [
+                'email' => strtolower(trim((string) $customer['email'])),
+                'firstname' => trim((string) ($customer['firstname'] ?? '')),
+                'lastname' => trim((string) ($customer['lastname'] ?? '')),
+            ];
+        }
+        $meta = $transaction['metadata'] ?? [];
+        $paid = is_array($meta) ? ($meta['paid_customer'] ?? null) : null;
+        if (is_array($paid) && !empty($paid['email'])) {
+            return [
+                'email' => strtolower(trim((string) $paid['email'])),
+                'firstname' => trim((string) ($paid['firstname'] ?? '')),
+                'lastname' => trim((string) ($paid['lastname'] ?? '')),
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Si FedaPay envoie prénom + nom, ils doivent correspondre au compte Gnonel (création client FedaPay = prenom/name).
+     */
+    private function fedapayPayerNamesMatchUser(array $payer, $userRow): bool
+    {
+        $fn = $payer['firstname'] ?? '';
+        $ln = $payer['lastname'] ?? '';
+        if ($fn === '' && $ln === '') {
+            return true;
+        }
+        $uFn = strtolower(trim((string) ($userRow->prenom ?? '')));
+        $uLn = strtolower(trim((string) ($userRow->name ?? '')));
+        if ($fn !== '' && strtolower($fn) !== $uFn) {
+            return false;
+        }
+        if ($ln !== '' && strtolower($ln) !== $uLn) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Trouve une souscription en attente (statut 0) : email utilisateur = payeur FedaPay, montant attendu = amount,
+     * et prénom/nom cohérents si FedaPay les fournit. Une seule correspondance autorisée.
+     */
+    private function findUniquePendingSouscriptionIdForFedapayTransaction(array $transaction, bool $requireApprovedStatus): ?int
+    {
+        if ($requireApprovedStatus && (($transaction['status'] ?? '') !== 'approved')) {
+            Log::warning('FedaPay webhook: entity.status attendu approved', ['status' => $transaction['status'] ?? null]);
+
+            return null;
+        }
+
+        $payer = $this->extractFedapayPayerProfile($transaction);
+        if ($payer === null || $payer['email'] === '') {
+            Log::warning('FedaPay webhook: email payeur introuvable (customer / paid_customer)');
+
+            return null;
+        }
+
+        if (!isset($transaction['amount'])) {
+            Log::warning('FedaPay webhook: amount manquant');
+
+            return null;
+        }
+        $amountFpInt = (int) round((float) $transaction['amount']);
+
+        $candidates = DB::table('souscriptions')
+            ->join('users', 'users.id', '=', 'souscriptions.iduser')
+            ->join('abonnement', 'abonnement.id', '=', 'souscriptions.idabonnement')
+            ->where('souscriptions.statut', '=', 0)
+            ->whereRaw('LOWER(TRIM(users.email)) = ?', [$payer['email']])
+            ->select(
+                'souscriptions.idsouscription',
+                'souscriptions.montant_finale_apaye',
+                'users.name',
+                'users.prenom',
+                'abonnement.is_pack_fixe',
+                'abonnement.prix_gros'
+            )
+            ->get();
+
+        $matchingIds = [];
+        foreach ($candidates as $row) {
+            $expected = (float) ($row->montant_finale_apaye ?? 0);
+            if (($expected <= 0) && (int) ($row->is_pack_fixe ?? 0) === 1) {
+                $expected = (float) ($row->prix_gros ?? 0);
+            }
+            if ((int) round($expected) !== $amountFpInt) {
+                continue;
+            }
+            if (!$this->fedapayPayerNamesMatchUser($payer, $row)) {
+                Log::info('FedaPay webhook: candidat exclu (montant OK mais nom/prénom différent de FedaPay)', [
+                    'idsouscription' => $row->idsouscription,
+                ]);
+                continue;
+            }
+            $matchingIds[] = (int) $row->idsouscription;
+        }
+
+        if (count($matchingIds) === 1) {
+            return $matchingIds[0];
+        }
+        if (count($matchingIds) === 0) {
+            if ($candidates->count() === 0) {
+                $userExists = DB::table('users')->whereRaw('LOWER(TRIM(email)) = ?', [$payer['email']])->exists();
+                if (!$userExists) {
+                    Log::warning('FedaPay webhook: aucun compte Gnonel avec cet email (souvent: inscription en local, webhook sur la prod qui consulte une autre base)', [
+                        'email' => $payer['email'],
+                        'amount' => $amountFpInt,
+                    ]);
+                } else {
+                    Log::warning('FedaPay webhook: compte trouvé mais aucune souscription en attente (statut 0) pour cet email', [
+                        'email' => $payer['email'],
+                        'amount' => $amountFpInt,
+                    ]);
+                }
+            } else {
+                Log::warning('FedaPay webhook: souscription(s) en attente pour cet email mais montant ou prénom/nom ne correspond pas à FedaPay', [
+                    'email' => $payer['email'],
+                    'amount' => $amountFpInt,
+                    'nb_candidates_statut_0' => $candidates->count(),
+                ]);
+            }
+
+            return null;
+        }
+        Log::warning('FedaPay webhook: plusieurs souscriptions correspondent — pas d\'action automatique', [
+            'email' => $payer['email'],
+            'amount' => $amountFpInt,
+            'idsouscriptions' => $matchingIds,
+        ]);
+
+        return null;
+    }
+
+
+
+    public function creer_abonne($offre)
+    {
+        if (Auth()->check()) {
+            $verif = User::verifabonnement(Auth::user());
+            $ab = DB::table('abonnement')->where('libelle', $offre)->first();
+
+            // Vérifier si l'abonnement existe
+            if (!$ab) {
+                return redirect()->back()->with('flash_message_error', 'Offre non trouvée');
+            }
+
+            // Vérifier si verifabonnement retourne un résultat avec paysreference
+            $paysreference = $verif && isset($verif->paysreference) ? $verif->paysreference : Auth::user()->pays;
+
+            // Valeur par défaut si toujours null (1 = Togo par défaut)
+            if (empty($paysreference)) {
+                $paysreference = 1;
+            }
+
+            $addto = DB::table('souscriptions')->insert([
+                'idabonnement' => $ab->id,
+                'paysreference' => $paysreference,
+                'iduser' => Auth::user()->id,
+                'created_at' => NOW(),
+                'updated_at' => NOW(),
+            ]);
+            return redirect(route('home'));
+        }
+        $pays = DB::table('pays')->orderby('nom_pays')->get();
+        $abonnements = DB::table('abonnement')->get();
+        $secteur_activites = DB::table('secteuractivite')->get();
+
+        return view('landing.subscription', compact('offre', 'pays', 'abonnements', 'secteur_activites'));
+    }
+
+
+
+    public function souscription()
+    {
+        $bonus = 0;
+        $data = request()->validate([
+            'abonnement' => ['numeric', 'gt:0'],
+            'name' => ['required', 'string', 'max:100'],
+            'prename' => ['required', 'string', 'max:100'],
+            'email' => ['required', 'string', 'email', 'max:255'],
+            'pays' => ['required'],
+            'telephone' => ['required'],
+            'type' => ['required'],
+            'count' => ['nullable'],
+            'structure' => ['required'],
+            'password' => ['required', 'string', 'min:8', 'confirmed']
+        ]);
+        
+        // Récupérer les infos de l'abonnement
+        $abonnementInfo = DB::table('abonnement')->where('id', '=', $data['abonnement'])->first();
+        $abn = $abonnementInfo->prix;
+        $remise = DB::table('configurations')->first()->bonus;
+        $tva = DB::table('configurations')->first()->tva;
+        $recom = null;
+        $discountPack = 0;
+        $discountRecom = 0;
+        
+        // Vérifier si c'est un pack fixe (PRO ou MIX BUSINESS)
+        $isPackFixe = $abonnementInfo->is_pack_fixe ?? 0;
+        $count = $isPackFixe ? ($abonnementInfo->count ?? 1) : ($data['count'] ?? 1);
+        
+        // Si pack fixe, utiliser le prix de gros et pas de bonus
+        if ($isPackFixe) {
+            $prixUnitaire = $abonnementInfo->prix_gros ?? $abn;
+            $bonus = 0; // Pas de bonus pour les packs fixes
+            $discountPack = 0;
+            $discountRecom = 0;
+        } else {
+            // Ancien calcul avec bonus
+            if (session("affiliation") != null) {
+                $recom = Recommander::where('code', session("affiliation"))->first();
+                if ($recom != null) {
+                    if ($recom->utilise == 0) {
+                        $bonus = ($abn * $remise) / 100;
+                    }
+                }
+            }
+            $discountRecom = $bonus * $count;
+
+            if ($count > 5) {
+                $bonus += ($abn * 5) / 100;
+                $discountPack = (($abn * 5) / 100) * $count;
+            }
+            $prixUnitaire = $abn - $bonus;
+        }
+        //dd($data);
+
+        // Vérifier si l'utilisateur existe déjà
+        $existingUser = DB::table('users')->where('email', $data['email'])->first();
+        
+        if ($existingUser) {
+            // Si l'utilisateur existe, l'utiliser pour la souscription
+            $userId = $existingUser->id;
+        } else {
+            // Créer le nouvel utilisateur
+            if ($data['type'] == "operateur") {
+                $userId = DB::table('users')->insertGetId([
+                    'name' => $data['name'],
+                    'prenom' => $data['prename'],
+                    'email' => $data['email'],
+                    'telephone' => $data['telephone'],
+                    'role' => 'user',
+                    'type_user' => 4, // Corrigé: 4 pour opérateur
+                    'ratache_operateur' => $data['structure'],
+                    'password' => Hash::make($data['password']),
+                    'created_at' => NOW(),
+                    'updated_at' => NOW(),
+                    'status' => 0
+                ]);
+            } elseif ($data['type'] == "autorite") {
+                $userId = DB::table('users')->insertGetId([
+                    'name' => $data['name'],
+                    'prenom' => $data['prename'],
+                    'email' => $data['email'],
+                    'telephone' => $data['telephone'],
+                    'role' => 'user',
+                    'type_user' => 5, // Corrigé: 5 pour autorité
+                    'ratache_autorite' => $data['structure'],
+                    'password' => Hash::make($data['password']),
+                    'created_at' => NOW(),
+                    'updated_at' => NOW(),
+                    'status' => 0
+                ]);
+            } else {
+                return redirect()->back()->with('flash_message_error', 'Type d\'utilisateur non valide');
+            }
+        }
+
+        // Créer la souscription
+        if ($userId) {
+            // Calculer le montant final selon le type de pack
+            if ($isPackFixe) {
+                $montantFinale = $prixUnitaire; // Prix de gros direct, pas de multiplication
+                $fraisBonus = 0;
+            } else {
+                $montantFinale = $prixUnitaire * $count;
+                $fraisBonus = $bonus * $count;
+            }
+            
+            $addto = DB::table('souscriptions')->insertGetId([
+                'idabonnement' => $data['abonnement'],
+                'paysreference' => $data['pays'],
+                'count' => $count,
+                'iduser' => $userId,
+                'montant_finale_apaye' => $montantFinale,
+                'frais_bonus' => $fraisBonus,
+                'discount_pack' => $discountPack,
+                'discount_recom' => $discountRecom,
+                'created_at' => NOW(),
+                'updated_at' => NOW(),
+            ]);
+            
+            if ($addto) {
+                if ($recom != null) {
+                    $recom->utilise = 1;
+                    $recom->souscription_id = $addto;
+                    $recom->save();
+                }
+
+                // Connecter l'utilisateur
+                $user = array('email' => $data['email'], 'password' => $data['password']);
+                Auth::attempt($user);
+
+                // Redirection vers la page de confirmation avant paiement
+                $souscriptions = DB::table('souscriptions')->where('idsouscription', '=', $addto)
+                    ->join('abonnement', 'abonnement.id', '=', 'souscriptions.idabonnement')
+                    ->select('souscriptions.idsouscription', 'souscriptions.montant_finale_apaye', 'souscriptions.discount_pack', 'souscriptions.discount_recom', 'abonnement.prix', 'abonnement.prix_gros', 'abonnement.is_pack_fixe', 'abonnement.libelle', 'souscriptions.created_at', 'souscriptions.count', 'abonnement.monnaie', 'abonnement.nbjours', 'souscriptions.frais_bonus')
+                    ->first();
+
+                return view('view_user_souscription', compact('souscriptions'));
+            } else {
+                return redirect()->back()->with('flash_message_error', 'Erreur lors de la création de la souscription');
+            }
+        } else {
+            return redirect()->back()->with('flash_message_error', 'Erreur lors de la création de l\'utilisateur');
+        }
+    }
+
+    /**
+     * Page de debug FedaPay - Analyse complète de la configuration et test API
+     */
+    public function debugFedapay()
+    {
+        $debug = [];
+        $errors = [];
+        $tests = [];
+
+        // 1. CONFIGURATION
+        $debug['config'] = [
+            'FEDAPAY_ENVIRONMENT' => env('FEDAPAY_ENVIRONMENT', 'NON DEFINI'),
+            'FEDAPAY_SECRET_KEY' => env('FEDAPAY_SECRET_KEY') ? substr(env('FEDAPAY_SECRET_KEY'), 0, 10) . '...' : 'NON DEFINI',
+            'APP_URL' => env('APP_URL', 'NON DEFINI'),
+            'BASE_URL_FEDAPAY' => FedaPayHelper::getBaseUrl(),
+        ];
+
+        // Vérifications
+        if (env('FEDAPAY_ENVIRONMENT') === 'live') {
+            $errors[] = 'ATTENTION: Mode LIVE activé. Les URLs localhost ne fonctionneront pas en production.';
+        }
+        if (strpos(env('APP_URL', ''), 'localhost') !== false || strpos(env('APP_URL', ''), '127.0.0.1') !== false) {
+            $errors[] = 'ATTENTION: APP_URL contient localhost/127.0.0.1. FedaPay rejette ces URLs.';
+        }
+        if (!env('FEDAPAY_SECRET_KEY')) {
+            $errors[] = 'ERREUR CRITIQUE: FEDAPAY_SECRET_KEY non défini';
+        }
+
+        // 2. TEST CONNEXION API - Récupérer la liste des clients
+        try {
+            $client = new Client(['timeout' => 30, 'verify' => false]);
+            $response = $client->get(FedaPayHelper::getBaseUrl() . '/customers', [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . env('FEDAPAY_SECRET_KEY'),
+                    'Content-Type' => 'application/json',
+                ]
+            ]);
+            $tests['api_connection'] = [
+                'status' => 'OK',
+                'code' => $response->getStatusCode(),
+                'message' => 'Connexion API réussie'
+            ];
+        } catch (\Exception $e) {
+            $tests['api_connection'] = [
+                'status' => 'ERREUR',
+                'message' => $e->getMessage()
+            ];
+            $errors[] = 'Connexion API échouée: ' . $e->getMessage();
+        }
+
+        // 3. TEST CRÉATION CLIENT
+        $testEmail = 'test' . time() . '@debug.local';
+        try {
+            $testUser = new User([
+                'name' => 'Debug',
+                'prenom' => 'Test',
+                'email' => $testEmail,
+                'telephone' => '+22890123456'
+            ]);
+            
+            $customerResult = FedaPayHelper::createCustomer($testUser);
+            $tests['create_customer'] = [
+                'status' => $customerResult['success'] ? 'OK' : 'ERREUR',
+                'result' => $customerResult,
+                'email_test' => $testEmail
+            ];
+            
+            if (!$customerResult['success']) {
+                $errors[] = 'Création client échouée: ' . ($customerResult['error'] ?? 'Inconnu');
+            }
+            
+            $customerId = $customerResult['customer_id'] ?? null;
+        } catch (\Exception $e) {
+            $tests['create_customer'] = [
+                'status' => 'EXCEPTION',
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ];
+            $errors[] = 'Exception création client: ' . $e->getMessage();
+            $customerId = null;
+        }
+
+        // 4. TEST CRÉATION TRANSACTION (si client créé)
+        if ($customerId) {
+            try {
+                $client = new Client(['timeout' => 30, 'verify' => false]);
+                
+                $payload = [
+                    'description' => 'Test Debug',
+                    'amount' => 100,
+                    'currency' => ['iso' => 'XOF'],
+                    'callback_url' => env('APP_URL') . '/return-subscription',
+                    'cancel_url' => env('APP_URL') . '/cancel-subscription',
+                    'customer' => ['id' => $customerId],
+                    'reference' => 'DEBUG_' . time(),
+                ];
+                
+                $tests['transaction_payload'] = $payload;
+                
+                $response = $client->post(FedaPayHelper::getBaseUrl() . '/transactions', [
+                    'json' => $payload,
+                    'headers' => [
+                        'Authorization' => 'Bearer ' . env('FEDAPAY_SECRET_KEY'),
+                        'Content-Type' => 'application/json',
+                    ]
+                ]);
+                
+                $data = json_decode($response->getBody(), true);
+                $tests['create_transaction'] = [
+                    'status' => 'OK',
+                    'code' => $response->getStatusCode(),
+                    'response' => $data
+                ];
+            } catch (\GuzzleHttp\Exception\ClientException $e) {
+                $response = $e->getResponse();
+                $body = $response ? $response->getBody()->getContents() : 'No body';
+                $tests['create_transaction'] = [
+                    'status' => 'CLIENT_ERROR',
+                    'code' => $e->getCode(),
+                    'message' => $e->getMessage(),
+                    'response_body' => $body
+                ];
+                $errors[] = 'Erreur client transaction: ' . $body;
+            } catch (\Exception $e) {
+                $tests['create_transaction'] = [
+                    'status' => 'EXCEPTION',
+                    'message' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ];
+                $errors[] = 'Exception transaction: ' . $e->getMessage();
+            }
+        } else {
+            $tests['create_transaction'] = [
+                'status' => 'SKIP',
+                'message' => 'Pas de customer_id, test ignoré'
+            ];
+        }
+
+        // 5. URLS GÉNÉRÉES
+        $debug['urls'] = [
+            'return_url' => env('APP_URL') . '/return-subscription',
+            'cancel_url' => env('APP_URL') . '/cancel-subscription',
+            'webhook_url' => env('APP_URL') . '/api/fedapay-webhook',
+        ];
+
+        // 6. RECOMMANDATIONS
+        $recommendations = [];
+        if (env('FEDAPAY_ENVIRONMENT') === 'live') {
+            $recommendations[] = 'Passez en mode SANDBOX pour tester localement: FEDAPAY_ENVIRONMENT=sandbox';
+        }
+        if (strpos(env('APP_URL', ''), 'localhost') !== false) {
+            $recommendations[] = 'Utilisez ngrok pour avoir une URL HTTPS valide';
+        }
+        if (empty($errors)) {
+            $recommendations[] = 'Aucune erreur détectée. Vérifiez les logs FedaPay côté dashboard.';
+        }
+
+        return view('debug.fedapay', compact('debug', 'tests', 'errors', 'recommendations'));
+    }
+}
