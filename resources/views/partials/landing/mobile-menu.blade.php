@@ -36,6 +36,7 @@
                 </ul>
             </li>
             <li><a href="{{ route('pricing') }}">Tarifs</a></li>
+            <li><a href="{{ route('gallery.public.index') }}">Galerie</a></li>
 
         </ul>
 

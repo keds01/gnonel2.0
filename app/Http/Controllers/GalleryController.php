@@ -41,7 +41,9 @@ class GalleryController extends Controller
             'event_date' => 'required|date',
             'category' => 'nullable|string|max:100',
             'description' => 'nullable|string',
-            'cover_image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:5120'
+            'cover_image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:5120',
+            'photos' => 'nullable|array',
+            'photos.*' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:5120'
         ]);
         
         $event = new Event();
@@ -101,6 +103,11 @@ class GalleryController extends Controller
         }
         
         $event->save();
+        
+        // Gérer les photos supplémentaires si présentes
+        if ($request->hasFile('photos')) {
+            $this->processMultiplePhotos($request->file('photos'), $event->id);
+        }
         
         return redirect()->route('gallery.admin.index')
             ->with('flash_message_success', 'Événement créé avec succès');
@@ -223,6 +230,94 @@ class GalleryController extends Controller
         
         return redirect()->route('gallery.admin.index')
             ->with('flash_message_success', 'Événement supprimé avec succès');
+    }
+    
+    /**
+     * Process multiple photos helper method
+     */
+    private function processMultiplePhotos($photos, $eventId)
+    {
+        $uploadedCount = 0;
+        
+        foreach ($photos as $index => $image) {
+            try {
+                $photo = new Photo();
+                $photo->event_id = $eventId;
+                $photo->is_hidden = false;
+                $photo->is_featured = false;
+                $photo->order = Photo::where('event_id', $eventId)->count() + $index + 1;
+                $photo->likes_count = 0;
+                
+                // Générer le nom de fichier
+                $imageName = time() . '_' . $index . '_' . Str::random(8) . '.webp';
+                
+                // Créer les répertoires
+                $mainPath = public_path('storage/events');
+                $thumbPath = public_path('storage/events/thumbnails');
+                
+                if (!File::exists($mainPath)) {
+                    File::makeDirectory($mainPath, 0755, true);
+                }
+                if (!File::exists($thumbPath)) {
+                    File::makeDirectory($thumbPath, 0755, true);
+                }
+                
+                // Traiter l'image principale avec GD
+                $imageInfo = getimagesize($image->getRealPath());
+                $sourceImage = null;
+                
+                switch ($imageInfo[2]) {
+                    case IMAGETYPE_JPEG:
+                        $sourceImage = imagecreatefromjpeg($image->getRealPath());
+                        break;
+                    case IMAGETYPE_PNG:
+                        $sourceImage = imagecreatefrompng($image->getRealPath());
+                        break;
+                    case IMAGETYPE_GIF:
+                        $sourceImage = imagecreatefromgif($image->getRealPath());
+                        break;
+                }
+                
+                if ($sourceImage) {
+                    // Redimensionner l'image principale
+                    $width = imagesx($sourceImage);
+                    $height = imagesy($sourceImage);
+                    $newWidth = 1920;
+                    $newHeight = ($height * $newWidth) / $width;
+                    
+                    if ($width > $newWidth) {
+                        $resizedImage = imagecreatetruecolor($newWidth, $newHeight);
+                        imagecopyresampled($resizedImage, $sourceImage, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
+                        imagewebp($resizedImage, $mainPath . '/' . $imageName, 85);
+                        imagedestroy($resizedImage);
+                    } else {
+                        imagewebp($sourceImage, $mainPath . '/' . $imageName, 85);
+                    }
+                    
+                    $photo->image_path = $imageName;
+                    
+                    // Créer la miniature
+                    $thumbWidth = 400;
+                    $thumbHeight = ($height * $thumbWidth) / $width;
+                    
+                    $thumbImage = imagecreatetruecolor($thumbWidth, $thumbHeight);
+                    imagecopyresampled($thumbImage, $sourceImage, 0, 0, 0, 0, $thumbWidth, $thumbHeight, $width, $height);
+                    imagewebp($thumbImage, $thumbPath . '/' . $imageName, 70);
+                    imagedestroy($thumbImage);
+                    
+                    $photo->thumbnail_path = $imageName;
+                    imagedestroy($sourceImage);
+                }
+                
+                $photo->save();
+                $uploadedCount++;
+            } catch (\Exception $e) {
+                // Continuer avec les autres photos en cas d'erreur
+                continue;
+            }
+        }
+        
+        return $uploadedCount;
     }
     
     /**

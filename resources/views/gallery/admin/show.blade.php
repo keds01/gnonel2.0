@@ -1,8 +1,99 @@
-@extends('layouts.app')
+@extends('layouts.back_layout')
+
+@section('title')
+    Détails de l'événement: {{ $event->title }}
+@endsection
 
 @section('content')
-<div class="container-fluid">
-    <div class="row">
+<style>
+    .upload-zone {
+        border: 2px dashed #ccc;
+        border-radius: 10px;
+        padding: 40px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s;
+        background: #f8f9fa;
+    }
+    
+    .upload-zone:hover {
+        border-color: #1b87fa;
+        background: #e9f2ff;
+    }
+    
+    .upload-zone.dragover {
+        border-color: #3fa46a;
+        background: #e8f5e9;
+    }
+    
+    .upload-zone i {
+        font-size: 3rem;
+        color: #ccc;
+        margin-bottom: 15px;
+    }
+    
+    .upload-zone p {
+        color: #666;
+        margin-bottom: 0;
+    }
+    
+    .photo-card {
+        transition: transform 0.3s, box-shadow 0.3s;
+        border-radius: 10px;
+        overflow: hidden;
+    }
+    
+    .photo-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+    }
+    
+    .photo-card img {
+        transition: transform 0.3s;
+    }
+    
+    .photo-card:hover img {
+        transform: scale(1.05);
+    }
+    
+    .event-info-card {
+        background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+        border-radius: 10px;
+        padding: 25px;
+    }
+    
+    .stat-badge {
+        padding: 8px 15px;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .stat-badge.photos {
+        background: #e3f2fd;
+        color: #1976d2;
+    }
+    
+    .stat-badge.likes {
+        background: #fce4ec;
+        color: #c2185b;
+    }
+    
+    .btn-action {
+        border-radius: 8px;
+        padding: 8px 12px;
+        transition: all 0.3s;
+    }
+    
+    .btn-action:hover {
+        transform: scale(1.05);
+    }
+</style>
+
+<div class="container">
+    <div class="row justify-content-center">
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
@@ -24,38 +115,40 @@
                     @endif
                     
                     <!-- Informations de l'événement -->
-                    <div class="row mb-4">
-                        <div class="col-md-3">
-                            @if($event->cover_image)
-                                <img src="{{ $event->cover_image_url }}" alt="{{ $event->title }}" 
-                                     class="img-fluid rounded">
-                            @else
-                                <div class="bg-secondary d-flex align-items-center justify-content-center rounded" 
-                                     style="height: 200px;">
-                                    <i class="fas fa-image fa-3x text-white"></i>
-                                </div>
-                            @endif
-                        </div>
-                        <div class="col-md-9">
-                            <h4>{{ $event->title }}</h4>
-                            <p class="text-muted">
-                                <i class="fas fa-calendar"></i> {{ \Carbon\Carbon::parse($event->event_date)->format('d/m/Y') }}
-                                @if($event->category)
-                                    <span class="ml-3">
-                                        <i class="fas fa-tag"></i> {{ $event->category }}
-                                    </span>
+                    <div class="event-info-card mb-4">
+                        <div class="row align-items-center">
+                            <div class="col-md-3 text-center">
+                                @if($event->cover_image)
+                                    <img src="{{ $event->cover_image_url }}" alt="{{ $event->title }}" 
+                                         class="img-fluid rounded" style="max-height: 200px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+                                @else
+                                    <div class="bg-secondary d-flex align-items-center justify-content-center rounded mx-auto" 
+                                         style="height: 200px; width: 200px;">
+                                        <i class="fas fa-image fa-3x text-white"></i>
+                                    </div>
                                 @endif
-                            </p>
-                            @if($event->description)
-                                <p>{{ $event->description }}</p>
-                            @endif
-                            <div class="mt-2">
-                                <span class="badge badge-info">
-                                    <i class="fas fa-images"></i> {{ $event->photos->count() }} photos
-                                </span>
-                                <span class="badge badge-success">
-                                    <i class="fas fa-heart"></i> {{ $event->likes_count }} likes
-                                </span>
+                            </div>
+                            <div class="col-md-9">
+                                <h3 style="color: #1b87fa; margin-bottom: 15px;">{{ $event->title }}</h3>
+                                <p class="text-muted mb-2">
+                                    <i class="fas fa-calendar"></i> {{ \Carbon\Carbon::parse($event->event_date)->format('d/m/Y') }}
+                                    @if($event->category)
+                                        <span class="ml-3">
+                                            <i class="fas fa-tag"></i> {{ $event->category }}
+                                        </span>
+                                    @endif
+                                </p>
+                                @if($event->description)
+                                    <p class="mb-3">{{ $event->description }}</p>
+                                @endif
+                                <div class="d-flex gap-2">
+                                    <span class="stat-badge photos">
+                                        <i class="fas fa-images"></i> {{ $event->photos->count() }} photos
+                                    </span>
+                                    <span class="stat-badge likes">
+                                        <i class="fas fa-heart"></i> {{ $event->likes_count }} likes
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -68,11 +161,10 @@
                             </h5>
                         </div>
                         <div class="card-body">
-                            <div id="dropzone" class="border-dashed p-4 text-center" 
-                                 style="border: 2px dashed #ccc; border-radius: 5px;">
-                                <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
-                                <p>Glissez-déposez vos photos ici ou</p>
-                                <input type="file" id="fileInput" multiple accept="image/*" class="d-none">
+                            <div id="dropzone" class="upload-zone">
+                                <input type="file" id="fileInput" multiple accept="image/*" style="display: none;">
+                                <i class="fas fa-cloud-upload-alt"></i>
+                                <p>Glissez-déposez vos photos ici ou cliquez pour sélectionner</p>
                                 <button type="button" class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
                                     Sélectionner des fichiers
                                 </button>
@@ -144,17 +236,17 @@
                                                             <i class="fas fa-heart"></i> {{ $photo->likes_count }}
                                                         </small>
                                                         <div class="btn-group btn-group-sm">
-                                                            <button type="button" class="btn btn-outline-primary" 
+                                                            <button type="button" class="btn btn-outline-primary btn-action" 
                                                                     onclick="editPhoto({{ $photo->id }})" title="Modifier">
                                                                 <i class="fas fa-edit"></i>
                                                             </button>
                                                             @if(!$event->cover_image || $event->cover_image != $photo->image_path)
-                                                                <button type="button" class="btn btn-outline-warning" 
+                                                                <button type="button" class="btn btn-outline-warning btn-action" 
                                                                         onclick="setAsCover({{ $photo->id }})" title="Définir comme couverture">
                                                                     <i class="fas fa-image"></i>
                                                                 </button>
                                                             @endif
-                                                            <button type="button" class="btn btn-outline-danger" 
+                                                            <button type="button" class="btn btn-outline-danger btn-action" 
                                                                     onclick="deletePhoto({{ $photo->id }})" title="Supprimer">
                                                                 <i class="fas fa-trash"></i>
                                                             </button>
@@ -221,19 +313,6 @@
     </div>
 </div>
 
-<style>
-.border-dashed {
-    border-style: dashed !important;
-}
-.photo-card {
-    transition: transform 0.2s;
-}
-.photo-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-}
-</style>
-
 <script>
 const eventId = {{ $event->id }};
 const uploadUrl = "{{ route('gallery.admin.bulk-upload', $event->id) }}";
@@ -246,18 +325,20 @@ const progressBar = document.getElementById('progressBar');
 const progressText = document.getElementById('progressText');
 const fileList = document.getElementById('fileList');
 
+dropzone.addEventListener('click', () => fileInput.click());
+
 dropzone.addEventListener('dragover', (e) => {
     e.preventDefault();
-    dropzone.classList.add('bg-light');
+    dropzone.classList.add('dragover');
 });
 
 dropzone.addEventListener('dragleave', () => {
-    dropzone.classList.remove('bg-light');
+    dropzone.classList.remove('dragover');
 });
 
 dropzone.addEventListener('drop', (e) => {
     e.preventDefault();
-    dropzone.classList.remove('bg-light');
+    dropzone.classList.remove('dragover');
     handleFiles(e.dataTransfer.files);
 });
 
@@ -357,7 +438,7 @@ function savePhoto() {
     const photoId = document.getElementById('photoId').value;
     const formData = new FormData(document.getElementById('photoForm'));
     
-    fetch(`{{ route('gallery.admin.update-photo', '') }}${photoId}`, {
+    fetch(`{{ route('gallery.admin.update-photo', ':id') }}`.replace(':id', photoId), {
         method: 'POST',
         headers: {
             'X-CSRF-TOKEN': '{{ csrf_token() }}',
@@ -381,7 +462,7 @@ function savePhoto() {
 
 function deletePhoto(photoId) {
     if (confirm('Êtes-vous sûr de vouloir supprimer cette photo ?')) {
-        fetch(`{{ route('gallery.admin.delete-photo', '') }}${photoId}`, {
+        fetch(`{{ route('gallery.admin.delete-photo', ':id') }}`.replace(':id', photoId), {
             method: 'DELETE',
             headers: {
                 'X-CSRF-TOKEN': '{{ csrf_token() }}',
@@ -403,7 +484,7 @@ function deletePhoto(photoId) {
 }
 
 function setAsCover(photoId) {
-    fetch(`{{ route('gallery.admin.set-cover', '') }}${photoId}`, {
+    fetch(`{{ route('gallery.admin.set-cover', ':id') }}`.replace(':id', photoId), {
         method: 'POST',
         headers: {
             'X-CSRF-TOKEN': '{{ csrf_token() }}',

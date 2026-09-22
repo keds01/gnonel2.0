@@ -26,6 +26,8 @@ class Photo extends Model
         'likes_count' => 'integer'
     ];
     
+    protected $appends = ['image_url', 'thumbnail_url'];
+    
     public function event()
     {
         return $this->belongsTo(Event::class);
@@ -38,7 +40,10 @@ class Photo extends Model
     
     public function getImageUrlAttribute()
     {
-        return asset('storage/events/' . $this->image_path);
+        if ($this->image_path) {
+            return asset('storage/events/' . $this->image_path);
+        }
+        return null;
     }
     
     public function getThumbnailUrlAttribute()

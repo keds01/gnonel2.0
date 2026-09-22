@@ -1,8 +1,12 @@
-@extends('layouts.app')
+@extends('layouts.back_layout')
+
+@section('title')
+    Gestion de la Galerie d'Événements
+@endsection
 
 @section('content')
-<div class="container-fluid">
-    <div class="row">
+<div class="container">
+    <div class="row justify-content-center">
         <div class="col-12">
             <div class="card">
                 <div class="card-header">

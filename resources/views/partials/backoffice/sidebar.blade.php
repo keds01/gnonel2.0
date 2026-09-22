@@ -190,6 +190,12 @@
                             <span> Carousel</span>
                         </a>
                     </li>
+                    <li>
+                        <a href="{{ route('gallery.admin.index') }}">
+                            <i data-feather="camera"></i>
+                            <span> Galerie</span>
+                        </a>
+                    </li>
                 @elseif(Auth::user()->type_user == 3)
                     <li>
                         <a href="#sidebarTechnicalSpecs" data-bs-toggle="collapse">
